@@ -1,0 +1,839 @@
+{% extends "base.html" %}
+{% block title %}Database Backups{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h2 style="font-size: 24px; font-weight: 700;">Database Backups</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">{{ backups|length }} backup{{ 's' if backups|length != 1 else '' }} on file</p>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <button type="button" class="btn btn-secondary" onclick="openLocalRestoreDialog()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-11.36L1 10"/></svg>
+            Restore from Local
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="openCloudRestoreDialog()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 18v-6M9 15l3 3 3-3"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+            Restore from Git
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="openFilepathRestoreDialog()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><path d="M12 18v-4M10 16l2 2 2-2"/></svg>
+            Restore from File Path
+        </button>
+    </div>
+</div>
+
+<!-- Backup Configuration -->
+<div class="card" style="margin-bottom: 24px; cursor: default;">
+    <div class="section-label">Backup Configuration</div>
+    <form method="POST" action="{{ url_for('backup_config') }}">
+
+        <!-- Local Backup Settings -->
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Local Backups</div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Backup directory</label>
+                    <input type="text" id="backupDirInput" name="backup_dir" value="{{ config.backup_dir }}"
+                           placeholder="/path/to/backups"
+                           style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px; font-family: var(--font-mono, monospace);">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openFolderPicker('backupDirInput')" style="white-space: nowrap;">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                        Browse
+                    </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Max backups to keep</label>
+                    <input type="number" name="max_backups" value="{{ config.max_backups }}"
+                           min="1" max="100" step="1"
+                           style="width: 80px; text-align: center; font-size: 13px; padding: 8px;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                        <input type="hidden" name="include_uploads" value="0">
+                        <input type="checkbox" name="include_uploads" value="1" {{ 'checked' if config.include_uploads }}
+                               style="width: 16px; height: 16px;">
+                        Include wiki &amp; device uploads in backups
+                    </label>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; min-width: 120px;">
+                        <input type="hidden" name="backup_enabled" value="0">
+                        <input type="checkbox" name="backup_enabled" value="1" {{ 'checked' if config.backup_enabled }}
+                               style="width: 16px; height: 16px;"
+                               onchange="document.getElementById('backupInterval').disabled = !this.checked">
+                        Auto-backup every
+                    </label>
+                    <input type="number" id="backupInterval" name="backup_interval_hours" value="{{ config.backup_interval_hours }}"
+                           min="0.1" step="any" {{ 'disabled' if not config.backup_enabled }}
+                           style="width: 80px; text-align: center; font-size: 13px; padding: 8px;">
+                    <span style="font-size: 13px; color: var(--text-muted);">hours</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; min-width: 120px;">
+                        <input type="hidden" name="prune_enabled" value="0">
+                        <input type="checkbox" name="prune_enabled" value="1" {{ 'checked' if config.prune_enabled }}
+                               style="width: 16px; height: 16px;"
+                               onchange="document.getElementById('pruneInterval').disabled = !this.checked">
+                        Auto-prune every
+                    </label>
+                    <input type="number" id="pruneInterval" name="prune_interval_hours" value="{{ config.prune_interval_hours }}"
+                           min="0.1" step="any" {{ 'disabled' if not config.prune_enabled }}
+                           style="width: 80px; text-align: center; font-size: 13px; padding: 8px;">
+                    <span style="font-size: 13px; color: var(--text-muted);">hours</span>
+                </div>
+            </div>
+
+                <div style="margin-top: 4px;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('backupNowForm').submit()">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Backup Now
+                    </button>
+                </div>
+
+            <!-- Auto-backup / scheduler status -->
+            {% if not scheduler_alive and (config.backup_enabled or config.prune_enabled) %}
+            <div style="margin-top: 8px; padding: 8px 14px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); font-size: 12px; color: var(--accent-red, #ef4444);">
+                Scheduler thread is not running — scheduled tasks may not execute. Save backup configuration to restart it.
+            </div>
+            {% endif %}
+            {% if config.backup_enabled %}
+            {% set backup_issues = [] %}{% for issue in backup_health.issues %}{% if 'ackup' in issue and 'loud' not in issue %}{% if backup_issues.append(issue) %}{% endif %}{% endif %}{% endfor %}
+            {% set backup_ok = backup_health.healthy or not backup_issues %}
+            <div style="margin-top: 8px; padding: 8px 14px; border-radius: 8px; font-size: 12px;
+                {% if not backup_ok %}background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); color: var(--accent-amber);
+                {% else %}background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); color: var(--accent-green);{% endif %}">
+                Auto-backup <strong>active</strong> — every {{ config.backup_interval_hours }} hour{{ 's' if config.backup_interval_hours != 1 else '' }}, keeping {{ config.max_backups }} backup{{ 's' if config.max_backups != 1 else '' }}
+                {% if next_backup_time %}
+                <br>Next backup: <strong>{{ next_backup_time }}</strong>
+                {% endif %}
+                {% for issue in backup_health.issues if 'ackup' in issue and 'loud' not in issue %}
+                <br><strong>Warning:</strong> {{ issue }}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Cloud Backup Section -->
+        <div style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-bottom: 16px;">
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-primary);">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px; margin-right: 4px;"><path d="M18 10h-1.26A8 8 0 103 16.3"/><path d="M20.39 18.39A5 5 0 0018 9h0"/><path d="M12 12v6M9 15l3-3 3 3"/></svg>
+                Cloud Backup
+            </div>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+                Push backups to one or more off-site destinations. Each method runs independently on its own schedule.
+            </p>
+
+            <!-- Git Repository -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6"/><path d="M5.64 5.64l4.24 4.24M14.12 14.12l4.24 4.24"/></svg>
+                    Git Repository
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Repository</label>
+                        <input type="text" name="git_repo" value="{{ config.git_repo }}"
+                               placeholder="Leave blank to use origin"
+                               style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px; font-family: var(--font-mono, monospace);">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Branch</label>
+                        <input type="text" name="git_branch" value="{{ config.git_branch }}"
+                               placeholder="backups"
+                               style="width: 160px; font-size: 13px; padding: 8px 12px;">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Access token</label>
+                        <input type="password" name="git_token" value="{{ config.git_token }}"
+                               placeholder="ghp_... (Personal Access Token)"
+                               autocomplete="off"
+                               style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px; font-family: var(--font-mono, monospace);">
+                        <span style="font-size: 11px; color: var(--text-muted);">GitHub PAT with repo Contents read/write</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Encryption password</label>
+                        <input type="password" name="git_encryption_password" value="{{ config.git_encryption_password }}"
+                               placeholder="Optional — encrypts backup zip with AES-256"
+                               autocomplete="off"
+                               style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px;">
+                        <span style="font-size: 11px; color: var(--text-muted);">{% if config.git_encryption_password %}Encryption active{% else %}Set to encrypt backups{% endif %}</span>
+                        {% if config.git_encryption_password %}
+                        <a href="{{ url_for('backup_export_encryption_key') }}" class="btn btn-secondary btn-sm"
+                           title="Download encryption key as a text file for safekeeping"
+                           style="font-size: 11px; padding: 4px 10px; white-space: nowrap;">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export Key
+                        </a>
+                        {% endif %}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; min-width: 120px;">
+                            <input type="hidden" name="git_enabled" value="0">
+                            <input type="checkbox" name="git_enabled" value="1" {{ 'checked' if config.git_enabled }}
+                                   style="width: 16px; height: 16px;"
+                                   onchange="document.getElementById('gitPushInterval').disabled = !this.checked">
+                            Auto-push every
+                        </label>
+                        <input type="number" id="gitPushInterval" name="git_push_interval_hours" value="{{ config.git_push_interval_hours }}"
+                               min="0.1" step="any" {{ 'disabled' if not config.git_enabled }}
+                               style="width: 80px; text-align: center; font-size: 13px; padding: 8px;">
+                        <span style="font-size: 13px; color: var(--text-muted);">hours</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="hidden" name="mirror_to_git" value="0">
+                            <input type="checkbox" name="mirror_to_git" value="1" {{ 'checked' if config.mirror_to_git }}
+                                   style="width: 16px; height: 16px;">
+                            <span>Mirror local backups (auto-prune cloud copy)</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('gitPushForm').submit()">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 103 16.3"/><path d="M20.39 18.39A5 5 0 0018 9h0"/><path d="M12 12v6M9 15l3-3 3 3"/></svg>
+                        Push Now
+                    </button>
+                    {% if config.last_git_push %}
+                    <span style="font-size: 11px; color: var(--text-muted);">Last: {{ config.last_git_push }}</span>
+                    {% endif %}
+                </div>
+                {% if config.git_enabled and config.git_repo %}
+                {% if not scheduler_alive %}
+                <div style="margin-top: 8px; padding: 8px 14px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.15); font-size: 12px; color: var(--accent-red, #ef4444);">
+                    Scheduler thread is not running — scheduled tasks may not execute. Save configuration to restart it.
+                </div>
+                {% endif %}
+                {% set cloud_issues = [] %}{% for issue in backup_health.issues %}{% if 'loud' in issue %}{% if cloud_issues.append(issue) %}{% endif %}{% endif %}{% endfor %}
+                {% set cloud_ok = not cloud_issues %}
+                <div style="margin-top: 8px; padding: 8px 14px; border-radius: 8px; font-size: 12px;
+                    {% if not cloud_ok %}background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); color: var(--accent-amber);
+                    {% else %}background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); color: var(--accent-green);{% endif %}">
+                    Git backup <strong>active</strong> — every {{ config.git_push_interval_hours }} hour{{ 's' if config.git_push_interval_hours != 1 else '' }} to {{ config.git_branch }}
+                    {% if next_git_push_time %}
+                    <br>Next push: <strong>{{ next_git_push_time }}</strong>
+                    {% endif %}
+                    {% for issue in backup_health.issues if 'loud' in issue %}
+                    <br><strong>Warning:</strong> {{ issue }}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- File Path -->
+            <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 12px;">
+                <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                    File Path
+                </div>
+                <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+                    Copy the backup bundle to a network share, USB drive, or synced cloud folder.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Destination path</label>
+                        <input type="text" id="filepathPathInput" name="filepath_path" value="{{ config.filepath_path }}"
+                               placeholder="\\server\share\backups or /mnt/nas/backups"
+                               style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px; font-family: var(--font-mono, monospace);">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="openFolderPicker('filepathPathInput')" style="white-space: nowrap;">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                            Browse
+                        </button>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="font-size: 13px; color: var(--text-secondary); min-width: 120px;">Encryption password</label>
+                        <input type="password" name="filepath_encryption_password" value="{{ config.filepath_encryption_password }}"
+                               placeholder="Optional — encrypts backup zip with AES-256"
+                               autocomplete="off"
+                               style="flex: 1; min-width: 200px; font-size: 13px; padding: 8px 12px;">
+                        <span style="font-size: 11px; color: var(--text-muted);">{% if config.filepath_encryption_password %}Encryption active{% else %}Set to encrypt backups{% endif %}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; min-width: 120px;">
+                            <input type="hidden" name="filepath_enabled" value="0">
+                            <input type="checkbox" name="filepath_enabled" value="1" {{ 'checked' if config.filepath_enabled }}
+                                   style="width: 16px; height: 16px;"
+                                   onchange="document.getElementById('filepathPushInterval').disabled = !this.checked">
+                            Auto-push every
+                        </label>
+                        <input type="number" id="filepathPushInterval" name="filepath_push_interval_hours" value="{{ config.filepath_push_interval_hours }}"
+                               min="0.1" step="any" {{ 'disabled' if not config.filepath_enabled }}
+                               style="width: 80px; text-align: center; font-size: 13px; padding: 8px;">
+                        <span style="font-size: 13px; color: var(--text-muted);">hours</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
+                            <input type="hidden" name="mirror_to_filepath" value="0">
+                            <input type="checkbox" name="mirror_to_filepath" value="1" {{ 'checked' if config.mirror_to_filepath }}
+                                   style="width: 16px; height: 16px;">
+                            <span>Mirror local backups (auto-prune filepath copy)</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('filepathPushForm').submit()">
+                        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                        Push Now
+                    </button>
+                    {% if config.last_filepath_push %}
+                    <span style="font-size: 11px; color: var(--text-muted);">Last: {{ config.last_filepath_push }}</span>
+                    {% endif %}
+                </div>
+                {% if config.filepath_enabled and config.filepath_path %}
+                <div style="margin-top: 8px; padding: 8px 14px; border-radius: 8px; font-size: 12px;
+                    background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); color: var(--accent-green);">
+                    File path backup <strong>active</strong> — every {{ config.filepath_push_interval_hours }} hour{{ 's' if config.filepath_push_interval_hours != 1 else '' }} to {{ config.filepath_path }}
+                    {% if next_filepath_push_time %}
+                    <br>Next push: <strong>{{ next_filepath_push_time }}</strong>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Status + Save -->
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <button type="submit" class="btn btn-primary btn-sm">Save Configuration</button>
+        </div>
+    </form>
+    <form id="backupNowForm" method="POST" action="{{ url_for('backup_create') }}" style="display: none;"></form>
+    <form id="gitPushForm" method="POST" action="{{ url_for('backup_push_git') }}" style="display: none;"></form>
+    <form id="filepathPushForm" method="POST" action="{{ url_for('backup_push_filepath') }}" style="display: none;"></form>
+    <div style="margin-top: 8px;">
+        <form method="POST" action="{{ url_for('backup_config_reset') }}" style="margin: 0;"
+              onsubmit="return confirm('Reset all backup settings to defaults?\n\nThis will disable auto-backup, auto-prune, and auto-push.\nGit credentials and backup history will be preserved.');">
+            <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 11px; opacity: 0.7;">
+                Reset to Defaults
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Local Backup List -->
+{% if backups %}
+<div class="card" style="margin-bottom: 24px; cursor: default;">
+    <div class="section-label">Local Backups</div>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-color); text-align: left;">
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Filename</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Date</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Size</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap;">Type</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; text-align: center;">Git</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; text-align: center;">File Path</th>
+                    <th style="padding: 8px 12px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in backups %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 8px 12px; font-family: var(--font-mono, monospace); white-space: nowrap;">{{ b.filename }}</td>
+                    <td style="padding: 8px 12px; white-space: nowrap; color: var(--text-secondary);">{{ b.timestamp }}</td>
+                    <td style="padding: 8px 12px; white-space: nowrap; color: var(--text-secondary);">
+                        {% if b.size >= 1048576 %}{{ '%.1f'|format(b.size / 1048576) }} MB{% else %}{{ '%.1f'|format(b.size / 1024) }} KB{% endif %}
+                    </td>
+                    <td style="padding: 8px 12px; white-space: nowrap;">
+                        {% if b.type == 'manual' %}
+                        <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: rgba(99,102,241,0.1); color: var(--accent-blue);">Manual</span>
+                        {% else %}
+                        <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: rgba(16,185,129,0.1); color: var(--accent-green);">Auto</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 8px 12px;">
+                        <div style="display: flex; align-items: center; justify-content: center;">
+                        {% if b.filename in cloud_backup_files %}
+                        <svg width="16" height="16" fill="none" stroke="var(--accent-green, #10b981)" stroke-width="2" viewBox="0 0 24 24" title="Pushed to Git">
+                            <path d="M18 10h-1.26A8 8 0 103 16.3"/><path d="M20.39 18.39A5 5 0 0018 9h0"/><path d="M8 16l2.5 2.5L16 13"/>
+                        </svg>
+                        {% else %}
+                        <span style="color: var(--text-muted);" title="Not yet pushed to Git">&mdash;</span>
+                        {% endif %}
+                        </div>
+                    </td>
+                    <td style="padding: 8px 12px;">
+                        <div style="display: flex; align-items: center; justify-content: center;">
+                        {% if b.filename in filepath_backup_files %}
+                        <svg width="16" height="16" fill="none" stroke="var(--accent-green, #10b981)" stroke-width="2" viewBox="0 0 24 24" title="Copied to file path">
+                            <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><path d="M8 16l2.5 2.5L16 13"/>
+                        </svg>
+                        {% else %}
+                        <span style="color: var(--text-muted);" title="Not yet copied to file path">&mdash;</span>
+                        {% endif %}
+                        </div>
+                    </td>
+                    <td style="padding: 8px 12px; white-space: nowrap; text-align: right;">
+                        <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                            <a href="{{ url_for('backup_download', filename=b.filename) }}" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 8px;" title="Download">
+                                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </a>
+                            <form method="POST" action="{{ url_for('backup_restore', filename=b.filename) }}" style="margin: 0;"
+                                  onsubmit="return confirm('Restore from this backup?\n\nThe current database will be overwritten. A safety backup will be created first.');">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 8px;" title="Restore">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-11.36L1 10"/></svg>
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('backup_delete', filename=b.filename) }}" style="margin: 0;"
+                                  onsubmit="return confirm('Delete this backup?\n\n{{ b.filename }}');">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 8px; color: var(--accent-red);" title="Delete">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Local Restore Modal -->
+<div id="localRestoreModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 560px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 18px; font-weight: 700;">Restore from Local Backup</h3>
+            <button onclick="closeLocalRestoreDialog()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px;">&times;</button>
+        </div>
+        <div id="localRestoreLoading" style="text-align: center; padding: 32px; color: var(--text-muted);">
+            <p>Loading local backups...</p>
+        </div>
+        <div id="localRestoreError" style="display:none; padding: 16px; text-align: center; color: var(--accent-red);">
+        </div>
+        <div id="localRestoreList" style="display:none; overflow-y: auto; flex: 1;">
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Click a backup to restore from it. A safety backup will be created first.</p>
+            <div id="localRestoreBody" style="display: flex; flex-direction: column; gap: 4px;">
+            </div>
+        </div>
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+            <form method="POST" action="{{ url_for('backup_upload') }}" enctype="multipart/form-data">
+                <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    Upload a backup file (.zip or .db)
+                    <input type="file" name="backup_file" accept=".zip,.db" style="display: none;"
+                           onchange="if(confirm('Restore database from this file?\\n\\nThis will overwrite the current database. A safety backup will be created first.')) this.form.submit();">
+                </label>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Cloud Restore Modal -->
+<div id="cloudRestoreModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 480px; width: 90%; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 18px; font-weight: 700;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -3px; margin-right: 6px;"><path d="M12 18v-6M9 15l3 3 3-3"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+                Restore from Cloud
+            </h3>
+            <button onclick="closeCloudRestoreDialog()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px;">&times;</button>
+        </div>
+        <div id="cloudRestoreLoading" style="text-align: center; padding: 32px; color: var(--text-muted);">
+            <p>Fetching latest cloud backup...</p>
+        </div>
+        <div id="cloudRestoreError" style="display:none; padding: 16px; text-align: center; color: var(--accent-red);">
+        </div>
+        <div id="cloudRestoreReady" style="display:none;">
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Select a backup to restore (.zip bundles include uploads, .db is database only):</p>
+            <div id="cloudRestoreList" style="max-height: 200px; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px;"></div>
+            <div style="padding: 12px; border-radius: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); margin-bottom: 16px;">
+                <p style="font-size: 12px; color: var(--accent-amber); margin: 0;">
+                    <strong>Warning:</strong> This will replace your current database with the cloud backup. A safety backup of your current data will be created first.
+                </p>
+            </div>
+            <form id="cloudRestoreForm" method="POST" action="{{ url_for('backup_git_restore') }}">
+                <input type="hidden" id="cloudRestoreFilenameInput" name="filename" value="">
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Admin password (required)</label>
+                    <input type="password" name="admin_password" required autocomplete="off"
+                           placeholder="Enter your admin password to confirm"
+                           style="width: 100%; font-size: 13px; padding: 8px 12px; box-sizing: border-box;">
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeCloudRestoreDialog()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="cloudRestoreSubmit" disabled>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 18v-6M9 15l3 3 3-3"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+                        Restore Cloud Backup
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- File Path Restore Modal -->
+<div id="filepathRestoreModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 480px; width: 90%; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 18px; font-weight: 700;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -3px; margin-right: 6px;"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                Restore from File Path
+            </h3>
+            <button onclick="closeFilepathRestoreDialog()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px;">&times;</button>
+        </div>
+        <div id="filepathRestoreLoading" style="text-align: center; padding: 32px; color: var(--text-muted);">
+            <p>Reading backup from file path...</p>
+        </div>
+        <div id="filepathRestoreError" style="display:none; padding: 16px; text-align: center; color: var(--accent-red);">
+        </div>
+        <div id="filepathRestoreReady" style="display:none;">
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Select a backup to restore (.zip bundles include uploads, .db is database only):</p>
+            <div id="filepathRestoreList" style="max-height: 200px; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px;"></div>
+            <div style="padding: 12px; border-radius: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); margin-bottom: 16px;">
+                <p style="font-size: 12px; color: var(--accent-amber); margin: 0;">
+                    <strong>Warning:</strong> This will replace your current database with the file path backup. A safety backup of your current data will be created first.
+                </p>
+            </div>
+            <form id="filepathRestoreForm" method="POST" action="{{ url_for('backup_filepath_restore') }}">
+                <input type="hidden" id="filepathRestoreFilenameInput" name="filename" value="">
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Admin password (required)</label>
+                    <input type="password" name="admin_password" required autocomplete="off"
+                           placeholder="Enter your admin password to confirm"
+                           style="width: 100%; font-size: 13px; padding: 8px 12px; box-sizing: border-box;">
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeFilepathRestoreDialog()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="filepathRestoreSubmit" disabled>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                        Restore File Path Backup
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Folder Picker Modal -->
+<div id="folderPickerModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 520px; width: 90%; max-height: 70vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 18px; font-weight: 700;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -3px; margin-right: 6px;"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                Select Folder
+            </h3>
+            <button onclick="closeFolderPicker()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px;">&times;</button>
+        </div>
+        <div id="folderPickerPath" class="font-mono" style="font-size: 12px; color: var(--text-muted); padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 8px; word-break: break-all;"></div>
+        <div id="folderPickerLoading" style="text-align: center; padding: 24px; color: var(--text-muted); display: none;">Loading...</div>
+        <div id="folderPickerError" style="display:none; padding: 12px; text-align: center; color: var(--accent-red); font-size: 13px;"></div>
+        <div id="folderPickerList" style="overflow-y: auto; flex: 1; min-height: 120px; max-height: 40vh; margin-bottom: 12px;">
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="closeFolderPicker()">Cancel</button>
+            <button type="button" class="btn btn-primary" id="folderPickerSelect" onclick="selectFolder()">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Select This Folder
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openLocalRestoreDialog() {
+    var modal = document.getElementById('localRestoreModal');
+    modal.style.display = 'flex';
+    document.getElementById('localRestoreLoading').style.display = 'block';
+    document.getElementById('localRestoreError').style.display = 'none';
+    document.getElementById('localRestoreList').style.display = 'none';
+
+    fetch('{{ url_for("backup_local_list") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('localRestoreLoading').style.display = 'none';
+            if (!data.ok) {
+                document.getElementById('localRestoreError').style.display = 'block';
+                document.getElementById('localRestoreError').textContent = data.error;
+                return;
+            }
+            if (data.backups.length === 0) {
+                document.getElementById('localRestoreError').style.display = 'block';
+                document.getElementById('localRestoreError').textContent = 'No local backup files found.';
+                return;
+            }
+            var container = document.getElementById('localRestoreBody');
+            container.innerHTML = '';
+            data.backups.forEach(function(b) {
+                var sizeStr = b.size >= 1048576
+                    ? (b.size / 1048576).toFixed(1) + ' MB'
+                    : (b.size / 1024).toFixed(1) + ' KB';
+                var row = document.createElement('form');
+                row.method = 'POST';
+                row.action = '{{ url_for("backup_restore", filename="PLACEHOLDER") }}'.replace('PLACEHOLDER', b.filename);
+                row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; border-radius:8px; border:1px solid var(--border-color); cursor:pointer; transition:all 0.15s; margin:0;';
+                row.onmouseover = function() { this.style.borderColor = 'var(--accent-blue)'; this.style.background = 'var(--bg-card-hover)'; };
+                row.onmouseout = function() { this.style.borderColor = 'var(--border-color)'; this.style.background = 'transparent'; };
+                row.onsubmit = function() { return confirm('Restore from this backup?\n\nThe current database will be overwritten. A safety backup will be created first.'); };
+                row.onclick = function(e) { if (e.target === this || e.target.parentElement === this) this.submit(); };
+
+                var info = document.createElement('div');
+                info.style.cssText = 'flex:1; min-width:0;';
+                info.innerHTML =
+                    '<div class="font-mono" style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + b.filename + '</div>' +
+                    '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' + b.timestamp + ' &middot; ' + sizeStr + '</div>';
+                row.appendChild(info);
+
+                var arrow = document.createElement('div');
+                arrow.style.cssText = 'color:var(--text-muted); flex-shrink:0;';
+                arrow.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>';
+                row.appendChild(arrow);
+
+                container.appendChild(row);
+            });
+            document.getElementById('localRestoreList').style.display = 'block';
+        })
+        .catch(function(err) {
+            document.getElementById('localRestoreLoading').style.display = 'none';
+            document.getElementById('localRestoreError').style.display = 'block';
+            document.getElementById('localRestoreError').textContent = 'Failed to fetch: ' + err.message;
+        });
+}
+
+function closeLocalRestoreDialog() {
+    document.getElementById('localRestoreModal').style.display = 'none';
+}
+
+document.getElementById('localRestoreModal').addEventListener('click', function(e) {
+    if (e.target === this) closeLocalRestoreDialog();
+});
+
+function openCloudRestoreDialog() {
+    var modal = document.getElementById('cloudRestoreModal');
+    modal.style.display = 'flex';
+    document.getElementById('cloudRestoreLoading').style.display = 'block';
+    document.getElementById('cloudRestoreError').style.display = 'none';
+    document.getElementById('cloudRestoreReady').style.display = 'none';
+
+    fetch('{{ url_for("backup_git_list") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('cloudRestoreLoading').style.display = 'none';
+            if (!data.ok) {
+                document.getElementById('cloudRestoreError').style.display = 'block';
+                document.getElementById('cloudRestoreError').textContent = data.error;
+                return;
+            }
+            if (data.backups.length === 0) {
+                document.getElementById('cloudRestoreError').style.display = 'block';
+                document.getElementById('cloudRestoreError').textContent = 'No cloud backups found. Push a backup to the cloud first.';
+                return;
+            }
+            var list = document.getElementById('cloudRestoreList');
+            list.innerHTML = '';
+            data.backups.forEach(function(b) {
+                var sizeStr = b.size >= 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB';
+                var isZip = b.filename.endsWith('.zip');
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px; border:1px solid var(--border-color); cursor:pointer; transition:all 0.15s;';
+                row.onmouseover = function() { this.style.borderColor = 'var(--accent-blue)'; this.style.background = 'var(--bg-card-hover)'; };
+                row.onmouseout = function() { if (!this.classList.contains('selected')) { this.style.borderColor = 'var(--border-color)'; this.style.background = 'transparent'; } };
+                row.onclick = function() {
+                    list.querySelectorAll('.selected').forEach(function(el) { el.classList.remove('selected'); el.style.borderColor = 'var(--border-color)'; el.style.background = 'transparent'; });
+                    this.classList.add('selected'); this.style.borderColor = 'var(--accent-blue)'; this.style.background = 'var(--bg-card-hover)';
+                    document.getElementById('cloudRestoreFilenameInput').value = b.filename;
+                    document.getElementById('cloudRestoreSubmit').disabled = false;
+                };
+                row.innerHTML =
+                    '<div style="flex:1; min-width:0;">' +
+                        '<div class="font-mono" style="font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + b.filename + '</div>' +
+                        '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' + (b.timestamp || '') + ' &middot; ' + sizeStr +
+                        (isZip ? ' &middot; <span style="color:var(--accent-green);">bundle</span>' : ' &middot; <span style="color:var(--text-muted);">db only</span>') +
+                        '</div>' +
+                    '</div>';
+                list.appendChild(row);
+            });
+            document.getElementById('cloudRestoreReady').style.display = 'block';
+        })
+        .catch(function(err) {
+            document.getElementById('cloudRestoreLoading').style.display = 'none';
+            document.getElementById('cloudRestoreError').style.display = 'block';
+            document.getElementById('cloudRestoreError').textContent = 'Failed to connect: ' + err.message;
+        });
+}
+
+function closeCloudRestoreDialog() {
+    document.getElementById('cloudRestoreModal').style.display = 'none';
+}
+
+document.getElementById('cloudRestoreModal').addEventListener('click', function(e) {
+    if (e.target === this) closeCloudRestoreDialog();
+});
+
+// --- File Path Restore ---
+function openFilepathRestoreDialog() {
+    var modal = document.getElementById('filepathRestoreModal');
+    modal.style.display = 'flex';
+    document.getElementById('filepathRestoreLoading').style.display = 'block';
+    document.getElementById('filepathRestoreError').style.display = 'none';
+    document.getElementById('filepathRestoreReady').style.display = 'none';
+
+    fetch('{{ url_for("backup_filepath_list") }}')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('filepathRestoreLoading').style.display = 'none';
+            if (!data.ok) {
+                document.getElementById('filepathRestoreError').style.display = 'block';
+                document.getElementById('filepathRestoreError').textContent = data.error;
+                return;
+            }
+            if (data.backups.length === 0) {
+                document.getElementById('filepathRestoreError').style.display = 'block';
+                document.getElementById('filepathRestoreError').textContent = 'No backups found at the configured file path.';
+                return;
+            }
+            var list = document.getElementById('filepathRestoreList');
+            list.innerHTML = '';
+            data.backups.forEach(function(b) {
+                var sizeStr = b.size >= 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB';
+                var isZip = b.filename.endsWith('.zip');
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px; border:1px solid var(--border-color); cursor:pointer; transition:all 0.15s;';
+                row.onmouseover = function() { this.style.borderColor = 'var(--accent-blue)'; this.style.background = 'var(--bg-card-hover)'; };
+                row.onmouseout = function() { if (!this.classList.contains('selected')) { this.style.borderColor = 'var(--border-color)'; this.style.background = 'transparent'; } };
+                row.onclick = function() {
+                    list.querySelectorAll('.selected').forEach(function(el) { el.classList.remove('selected'); el.style.borderColor = 'var(--border-color)'; el.style.background = 'transparent'; });
+                    this.classList.add('selected'); this.style.borderColor = 'var(--accent-blue)'; this.style.background = 'var(--bg-card-hover)';
+                    document.getElementById('filepathRestoreFilenameInput').value = b.filename;
+                    document.getElementById('filepathRestoreSubmit').disabled = false;
+                };
+                row.innerHTML =
+                    '<div style="flex:1; min-width:0;">' +
+                        '<div class="font-mono" style="font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + b.filename + '</div>' +
+                        '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' + (b.timestamp || '') + ' &middot; ' + sizeStr +
+                        (isZip ? ' &middot; <span style="color:var(--accent-green);">bundle</span>' : ' &middot; <span style="color:var(--text-muted);">db only</span>') +
+                        '</div>' +
+                    '</div>';
+                list.appendChild(row);
+            });
+            document.getElementById('filepathRestoreReady').style.display = 'block';
+        })
+        .catch(function(err) {
+            document.getElementById('filepathRestoreLoading').style.display = 'none';
+            document.getElementById('filepathRestoreError').style.display = 'block';
+            document.getElementById('filepathRestoreError').textContent = 'Failed to connect: ' + err.message;
+        });
+}
+
+function closeFilepathRestoreDialog() {
+    document.getElementById('filepathRestoreModal').style.display = 'none';
+}
+
+document.getElementById('filepathRestoreModal').addEventListener('click', function(e) {
+    if (e.target === this) closeFilepathRestoreDialog();
+});
+
+// --- Folder Picker ---
+var _folderPickerTarget = null;
+var _folderPickerCurrentPath = '';
+
+function openFolderPicker(inputId) {
+    _folderPickerTarget = document.getElementById(inputId);
+    var startPath = _folderPickerTarget.value.trim() || '';
+    document.getElementById('folderPickerModal').style.display = 'flex';
+    _browseTo(startPath);
+}
+
+function closeFolderPicker() {
+    document.getElementById('folderPickerModal').style.display = 'none';
+    _folderPickerTarget = null;
+}
+
+document.getElementById('folderPickerModal').addEventListener('click', function(e) {
+    if (e.target === this) closeFolderPicker();
+});
+
+function _browseTo(path) {
+    var loading = document.getElementById('folderPickerLoading');
+    var errDiv = document.getElementById('folderPickerError');
+    var listDiv = document.getElementById('folderPickerList');
+    var pathDiv = document.getElementById('folderPickerPath');
+
+    loading.style.display = 'block';
+    errDiv.style.display = 'none';
+    listDiv.innerHTML = '';
+    pathDiv.textContent = path || '(root)';
+
+    var url = '{{ url_for("backup_browse_directory") }}' + (path ? '?path=' + encodeURIComponent(path) : '');
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            loading.style.display = 'none';
+            if (!data.ok) {
+                errDiv.style.display = 'block';
+                errDiv.textContent = data.error;
+                return;
+            }
+            _folderPickerCurrentPath = data.path;
+            pathDiv.textContent = data.path || '(select a drive)';
+
+            var html = '';
+            // Up/parent button
+            if (data.parent !== undefined && data.parent !== '' && data.path) {
+                html += '<div onclick="_browseTo(\'' + data.parent.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" ' +
+                    'style="display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; border-radius:6px; font-size:13px; color:var(--text-secondary); transition:background 0.1s;" ' +
+                    'onmouseover="this.style.background=\'var(--bg-card-hover)\'" onmouseout="this.style.background=\'transparent\'">' +
+                    '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>' +
+                    '<span>..</span></div>';
+            }
+            data.entries.forEach(function(e) {
+                html += '<div onclick="_browseTo(\'' + e.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" ' +
+                    'style="display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; border-radius:6px; font-size:13px; transition:background 0.1s;" ' +
+                    'onmouseover="this.style.background=\'var(--bg-card-hover)\'" onmouseout="this.style.background=\'transparent\'">' +
+                    '<svg width="14" height="14" fill="none" stroke="var(--accent-amber)" stroke-width="2" viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>' +
+                    '<span>' + e.name + '</span></div>';
+            });
+            if (!data.entries.length && data.path) {
+                html += '<div style="padding:12px; text-align:center; color:var(--text-muted); font-size:12px;">No sub-folders</div>';
+            }
+            listDiv.innerHTML = html;
+        })
+        .catch(function(err) {
+            loading.style.display = 'none';
+            errDiv.style.display = 'block';
+            errDiv.textContent = 'Failed to browse: ' + err.message;
+        });
+}
+
+function selectFolder() {
+    if (_folderPickerTarget && _folderPickerCurrentPath) {
+        _folderPickerTarget.value = _folderPickerCurrentPath;
+    }
+    closeFolderPicker();
+}
+
+// --- Loading overlay for long operations ---
+(function() {
+    var overlay = document.createElement('div');
+    overlay.id = 'loadingOverlay';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;flex-direction:column;gap:16px;';
+    overlay.innerHTML = '<div style="color:white;font-size:16px;font-weight:600;" id="loadingMsg">Working...</div><div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite;"></div>';
+    var style = document.createElement('style');
+    style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(style);
+    document.body.appendChild(overlay);
+
+    function showLoading(msg) {
+        document.getElementById('loadingMsg').textContent = msg || 'Working...';
+        overlay.style.display = 'flex';
+    }
+
+    // Attach to all backup/restore/push forms
+    document.querySelectorAll('form[action*="backup"], form[action*="restore"], form[action*="push"]').forEach(function(form) {
+        form.addEventListener('submit', function() {
+            var btn = form.querySelector('button[type="submit"]');
+            var msg = 'Working...';
+            if (btn) {
+                var text = btn.textContent.trim();
+                if (text.indexOf('Backup') >= 0) msg = 'Creating backup...';
+                else if (text.indexOf('Restore') >= 0) msg = 'Restoring database...';
+                else if (text.indexOf('Push') >= 0) msg = 'Pushing to git...';
+                else if (text.indexOf('Reset') >= 0) msg = 'Resetting configuration...';
+            }
+            showLoading(msg);
+        });
+    });
+})();
+</script>
+{% endblock %}

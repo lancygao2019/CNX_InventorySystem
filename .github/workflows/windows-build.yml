@@ -1,0 +1,55 @@
+name: Build Windows Executable (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: "Python version for build"
+        required: false
+        default: "3.11"
+      requirements_file:
+        description: "Requirements file (requirements.txt or requirements_win7.txt)"
+        required: false
+        default: "requirements.txt"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ github.event.inputs.python_version || '3.11' }}
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          $requirementsFile = "${{ github.event.inputs.requirements_file || 'requirements.txt' }}"
+          if (-not (Test-Path $requirementsFile)) {
+            throw "Requirements file not found: $requirementsFile"
+          }
+          python -m pip install --upgrade pip
+          pip install -r $requirementsFile
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --clean scripts/inventory.spec
+
+      - name: Create zip package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/InventorySystem")) {
+            throw "Build output not found at dist/InventorySystem"
+          }
+          Compress-Archive -Path "dist/InventorySystem/*" -DestinationPath "InventorySystem-Windows.zip" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InventorySystem-Windows
+          path: |
+            dist/InventorySystem/
+            InventorySystem-Windows.zip

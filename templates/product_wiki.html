@@ -1,0 +1,613 @@
+{% extends "base.html" %}
+{% block title %}{{ ref.codename }} — Wiki{% endblock %}
+
+{% block extra_head %}
+<style>
+    .wiki-header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+    }
+    .wiki-header h2 { font-size: 24px; font-weight: 700; margin: 0; }
+    .wiki-header .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+
+    .wiki-editor {
+        width: 100%; min-height: 500px; padding: 16px; font-size: 14px;
+        font-family: 'DM Sans', sans-serif; line-height: 1.7;
+        background: var(--bg-primary); color: var(--text-primary);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        resize: vertical; transition: border-color 0.15s;
+    }
+    .wiki-editor:focus {
+        outline: none; border-color: var(--accent-blue);
+        box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+    }
+
+    .fmt-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 30px; height: 28px; border: none; border-radius: 4px;
+        background: transparent; color: var(--text-secondary); cursor: pointer;
+        font-size: 14px; font-family: 'DM Sans', serif;
+        transition: background 0.12s, color 0.12s;
+    }
+    .fmt-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+    .fmt-btn:active { background: var(--accent-blue); color: #fff; }
+
+    .wiki-content {
+        padding: 20px; font-size: 14px; line-height: 1.8;
+        color: var(--text-primary); word-wrap: break-word;
+    }
+    .wiki-content:empty::before {
+        content: 'No documentation has been added for this product yet.';
+        color: var(--text-muted); font-style: italic;
+    }
+    /* Markdown rendered styles */
+    .wiki-content h1, .wiki-content h2, .wiki-content h3 { margin: 1em 0 0.5em; font-weight: 700; color: var(--text-primary); }
+    .wiki-content h1 { font-size: 1.5em; }
+    .wiki-content h2 { font-size: 1.3em; }
+    .wiki-content h3 { font-size: 1.1em; }
+    .wiki-content p { margin: 0.6em 0; }
+    .wiki-content ul, .wiki-content ol { margin: 0.5em 0; padding-left: 1.5em; }
+    .wiki-content li { margin: 0.3em 0; }
+    .wiki-content code { background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.9em; }
+    .wiki-content pre { background: var(--bg-secondary); padding: 12px 16px; border-radius: 8px; overflow-x: auto; margin: 0.8em 0; }
+    .wiki-content pre code { background: none; padding: 0; }
+    .wiki-content blockquote { border-left: 3px solid var(--accent-blue); padding-left: 12px; margin: 0.8em 0; color: var(--text-secondary); }
+    .wiki-content table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+    .wiki-content th, .wiki-content td { border: 1px solid var(--border-color); padding: 6px 10px; text-align: left; }
+    .wiki-content th { background: var(--bg-secondary); font-weight: 600; }
+    .wiki-content a { color: var(--accent-blue); }
+    .wiki-content hr { border: none; border-top: 1px solid var(--border-color); margin: 1em 0; }
+    .wiki-content img { max-width: 100%; border-radius: 8px; }
+
+    .wiki-toolbar {
+        display: flex; gap: 8px; align-items: center;
+        flex-wrap: wrap;
+    }
+    .wiki-toolbar .btn { font-size: 12px; }
+
+    .wiki-meta {
+        font-size: 11px; color: var(--text-muted); margin-top: 12px;
+        padding-top: 12px; border-top: 1px solid var(--border-color);
+    }
+
+    .format-hint {
+        font-size: 11px; color: var(--text-muted); margin-top: 8px;
+    }
+
+    /* Attachments */
+    .attach-section {
+        margin-top: 24px;
+    }
+    .attach-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px; margin-top: 12px;
+    }
+    .attach-card {
+        background: var(--bg-secondary); border: 1px solid var(--border-color);
+        border-radius: 8px; overflow: hidden; transition: border-color 0.15s;
+    }
+    .attach-card:hover { border-color: var(--accent-blue); }
+    .attach-preview {
+        width: 100%; height: 140px; object-fit: cover; display: block;
+        background: var(--bg-primary);
+    }
+    .attach-preview-placeholder {
+        width: 100%; height: 140px; display: flex; align-items: center;
+        justify-content: center; background: var(--bg-primary);
+        color: var(--text-muted); font-size: 32px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .attach-info {
+        padding: 10px 12px;
+    }
+    .attach-name {
+        font-size: 13px; font-weight: 600; color: var(--text-primary);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        text-decoration: none; display: block;
+    }
+    .attach-name:hover { color: var(--accent-blue); }
+    .attach-meta {
+        font-size: 11px; color: var(--text-muted); margin-top: 4px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .attach-delete {
+        background: none; border: none; color: var(--text-muted); cursor: pointer;
+        font-size: 14px; padding: 2px 6px; border-radius: 4px; opacity: 0.5;
+        transition: opacity 0.15s, color 0.15s;
+    }
+    .attach-delete:hover { opacity: 1; color: var(--accent-red); }
+
+    .upload-area {
+        border: 2px dashed var(--border-color); border-radius: 8px;
+        padding: 20px; text-align: center; transition: border-color 0.15s;
+        cursor: pointer; margin-top: 12px;
+    }
+    .upload-area:hover, .upload-area.dragover {
+        border-color: var(--accent-blue);
+    }
+    .upload-area input[type="file"] { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wiki-header">
+    <div>
+        <div style="margin-bottom: 8px;">
+            <a href="{{ url_for('product_reference_list') }}" style="color: var(--text-muted); text-decoration: none; font-size: 13px;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Product Reference
+            </a>
+        </div>
+        <h2>
+            <svg width="22" height="22" fill="none" stroke="var(--accent-cyan)" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -3px; margin-right: 6px;">
+                <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+            </svg>
+            {{ ref.codename }} Wiki
+        </h2>
+    </div>
+</div>
+
+<!-- Product Reference Details -->
+<div class="card" style="cursor: default; margin-bottom: 16px; padding: 0; overflow: hidden;">
+    <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary); display: flex; align-items: center;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Product Specifications</span>
+    </div>
+    <div style="padding: 16px 20px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 24px;">
+            {% set specs = [
+                ('Codename', ref.codename),
+                ('Model Name', ref.model_name),
+                ('Print Technology', ref.print_technology),
+                ('Wi-Fi Generation', ref.wifi_gen),
+                ('Year', ref.year),
+                ('Chip Manufacturer', ref.chip_manufacturer),
+                ('Chip Codename', ref.chip_codename),
+                ('Firmware Codebase', ref.fw_codebase),
+                ('Cartridge / Toner', ref.cartridge_toner),
+                ('Predecessor', ref.predecessor),
+            ] %}
+            {% for label, value in specs %}
+            {% if value %}
+            <div>
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 3px;">{{ label }}</div>
+                <div style="font-size: 14px; color: var(--text-primary);">
+                    {% if label == 'Predecessor' and predecessor_ref_id %}
+                    <a href="{{ url_for('product_wiki', ref_id=predecessor_ref_id) }}" style="color: var(--accent-cyan); text-decoration: none; border-bottom: 1px dashed var(--accent-cyan);">{{ value }}</a>
+                    {% else %}
+                    {{ value }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% if has_permission('references') %}
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+            <a href="{{ url_for('product_reference_edit', ref_id=ref.ref_id) }}" class="btn btn-secondary btn-sm" style="font-size: 11px;">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit Product Reference
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Wiki Content -->
+<div class="card" style="padding: 0; overflow: hidden; cursor: default;">
+    {% if current_user %}
+    <!-- View mode (default): rendered markdown with Edit button -->
+    <div id="wikiViewMode">
+        <div class="wiki-toolbar" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;">
+                    <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+                </svg>
+                Wiki
+            </span>
+            <div style="flex: 1;"></div>
+            <button type="button" id="wikiEditBtn" class="btn btn-secondary btn-sm">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+            </button>
+        </div>
+        <div class="wiki-content" id="wikiRendered"></div>
+    </div>
+
+    <!-- Edit mode (hidden by default): textarea with toolbar -->
+    <form method="POST" action="{{ url_for('product_wiki_save', ref_id=ref.ref_id) }}" id="wikiEditMode" style="display: none;">
+        <div class="wiki-toolbar" style="padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Editing
+            </span>
+            <div style="flex: 1;"></div>
+            <button type="button" id="wikiCancelBtn" class="btn btn-secondary btn-sm" style="margin-right: 8px;">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Save
+            </button>
+        </div>
+        <!-- Formatting toolbar -->
+        <div class="fmt-toolbar" style="display: flex; align-items: center; gap: 2px; padding: 6px 16px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);">
+            <button type="button" class="fmt-btn" data-fmt="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button type="button" class="fmt-btn" data-fmt="italic" title="Italic (Ctrl+I)"><em>I</em></button>
+            <button type="button" class="fmt-btn" data-fmt="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+            <span style="width: 1px; height: 20px; background: var(--border-color); margin: 0 6px;"></span>
+            <button type="button" class="fmt-btn" data-fmt="heading-up" title="Increase heading level">
+                <span style="font-size: 13px; font-weight: 700;">H</span><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="vertical-align: 0px;"><path d="M5 2L2 6h6z"/></svg>
+            </button>
+            <button type="button" class="fmt-btn" data-fmt="heading-down" title="Decrease heading level">
+                <span style="font-size: 13px; font-weight: 700;">H</span><svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="vertical-align: 0px;"><path d="M5 8L2 4h6z"/></svg>
+            </button>
+            <span style="width: 1px; height: 20px; background: var(--border-color); margin: 0 6px;"></span>
+            <button type="button" class="fmt-btn" data-fmt="list" title="Bullet list">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/></svg>
+            </button>
+            <button type="button" class="fmt-btn" data-fmt="code" title="Code">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </button>
+            <button type="button" class="fmt-btn" data-fmt="link" title="Link">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            </button>
+        </div>
+        <textarea name="content" class="wiki-editor" id="wikiEditor" placeholder="Start documenting this product...&#10;&#10;Add testing nuances, known issues, configuration tips, or anything the team should know.">{{ content }}</textarea>
+    </form>
+    {% else %}
+    <!-- Read-only view for visitors -->
+    <div class="wiki-content" id="wikiReadOnly"></div>
+    {% endif %}
+
+    {% if updated_by %}
+    <div class="wiki-meta" style="padding: 0 16px 12px;">
+        Last edited by <strong>{{ updated_by }}</strong>
+        {% if updated_at %} on {{ updated_at }}{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Notes Section -->
+<div class="card" style="margin-bottom: 16px; cursor: default;">
+    <div class="section-label">Notes</div>
+
+    {% if wiki_notes %}
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+        {% for note in wiki_notes %}
+        <div style="padding: 12px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">{{ note.author }}</span>
+                <span class="font-mono" style="font-size: 11px; color: var(--text-muted);">{{ note.created_at }}</span>
+            </div>
+            <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; word-wrap: break-word;">{{ note.content }}</div>
+            {% if current_user and has_permission('wiki') %}
+            <form method="POST" action="{{ url_for('delete_wiki_note_route', note_id=note.note_id) }}"
+                  onsubmit="return confirm('Delete this note?')" style="margin-top: 6px; text-align: right;">
+                <input type="hidden" name="ref_id" value="{{ ref.ref_id }}">
+                <button type="submit" style="background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s;"
+                        onmouseover="this.style.color='var(--accent-red)'" onmouseout="this.style.color='var(--text-muted)'">&times; Delete</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if has_permission('wiki') %}
+    <form method="POST" action="{{ url_for('add_wiki_note', ref_id=ref.ref_id) }}">
+        {% if not current_user %}
+        <div style="margin-bottom: 8px;">
+            <input type="text" name="author_name" placeholder="Your name (optional)" maxlength="100"
+                   style="width: 100%; max-width: 250px; font-size: 13px;">
+        </div>
+        {% endif %}
+        <div style="display: flex; gap: 8px; align-items: flex-end;">
+            <textarea name="note_content" required placeholder="Add a note..." maxlength="2000"
+                      style="flex: 1; min-height: 60px; max-height: 200px; font-size: 13px; font-family: 'DM Sans', sans-serif; resize: vertical; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);"></textarea>
+            <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom: 2px;">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                Add
+            </button>
+        </div>
+    </form>
+    {% else %}
+    {% if not wiki_notes %}
+    <p style="color: var(--text-muted); font-size: 13px;">No notes yet.</p>
+    {% endif %}
+    {% endif %}
+</div>
+
+<!-- Attachments Section -->
+<div class="attach-section">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="section-label" style="margin-bottom: 0;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+            </svg>
+            Attachments{% if attachments %} ({{ attachments|length }}){% endif %}
+        </div>
+    </div>
+
+    {% if attachments %}
+    <div class="attach-grid">
+        {% for att in attachments %}
+        <div class="attach-card">
+            {% set is_image = att.content_type and att.content_type.startswith('image/') %}
+            {% if is_image %}
+            <a href="{{ url_for('wiki_attachment_preview', attachment_id=att.attachment_id) }}" target="_blank">
+                <img src="{{ url_for('wiki_attachment_preview', attachment_id=att.attachment_id) }}" alt="{{ att.original_name }}" class="attach-preview">
+            </a>
+            {% else %}
+            <a href="{{ url_for('wiki_download', attachment_id=att.attachment_id) }}" class="attach-preview-placeholder">
+                {{ att.original_name.rsplit('.', 1)[-1] if '.' in att.original_name else '?' }}
+            </a>
+            {% endif %}
+            <div class="attach-info">
+                <a href="{{ url_for('wiki_download', attachment_id=att.attachment_id) }}" class="attach-name" title="{{ att.original_name }}">{{ att.original_name }}</a>
+                <div class="attach-meta">
+                    <span>{{ '%.1f'|format(att.size_bytes / 1024) }} KB &middot; {{ att.uploaded_by }}</span>
+                    {% if has_permission('wiki') %}
+                    <form method="POST" action="{{ url_for('wiki_delete_attachment', attachment_id=att.attachment_id) }}"
+                          onsubmit="return confirm('Delete {{ att.original_name }}?')" style="margin: 0;">
+                        <button type="submit" class="attach-delete" title="Delete">&times;</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% elif not has_permission('wiki') %}
+    <p style="color: var(--text-muted); font-size: 13px; margin-top: 12px;">No attachments yet.</p>
+    {% endif %}
+
+    {% if has_permission('wiki') %}
+    <!-- Upload area (admin only) -->
+    <form method="POST" action="{{ url_for('wiki_upload', ref_id=ref.ref_id) }}" enctype="multipart/form-data" id="uploadForm">
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+            <svg width="24" height="24" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24" style="margin-bottom: 8px;">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            <p style="color: var(--text-muted); font-size: 13px; margin: 0;">
+                Click to upload or drag and drop
+            </p>
+            <p style="color: var(--text-muted); font-size: 11px; margin: 4px 0 0;">
+                Images, PDFs, documents, spreadsheets, logs (max 25 MB)
+            </p>
+            <input type="file" name="attachment" id="fileInput" onchange="document.getElementById('uploadForm').submit()">
+        </div>
+    </form>
+    <script>
+    (function() {
+        var area = document.getElementById('uploadArea');
+        var form = document.getElementById('uploadForm');
+
+        ['dragenter', 'dragover'].forEach(function(evt) {
+            area.addEventListener(evt, function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                area.classList.add('dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach(function(evt) {
+            area.addEventListener(evt, function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                area.classList.remove('dragover');
+            });
+        });
+
+        area.addEventListener('drop', function(e) {
+            var files = e.dataTransfer.files;
+            if (!files.length) return;
+            var formData = new FormData();
+            formData.append('attachment', files[0]);
+            area.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Uploading...</p>';
+            fetch(form.action, { method: 'POST', body: formData })
+                .then(function() { window.location.reload(); })
+                .catch(function() { window.location.reload(); });
+        });
+
+        // Also prevent default drag behavior on the whole document
+        // so the browser doesn't navigate to the dropped file
+        document.addEventListener('dragover', function(e) { e.preventDefault(); });
+        document.addEventListener('drop', function(e) { e.preventDefault(); });
+    })();
+    </script>
+    {% endif %}
+</div>
+
+{% if current_user %}
+<p class="format-hint" id="wikiFormatHint" style="display: none;">
+    Supports Markdown: **bold**, *italic*, # Heading, - lists, `code`, [links](url), > quotes.
+    All logged-in users can edit. Changes are visible to the entire team.
+</p>
+{% endif %}
+
+<!-- Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script>
+(function() {
+    // Configure marked for safe rendering
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({ breaks: true, gfm: true });
+    }
+
+    // Raw wiki content from server (escaped for safe embedding)
+    var rawContent = {{ content|tojson }};
+
+    function renderMarkdown(text) {
+        if (typeof marked !== 'undefined' && text) {
+            return marked.parse(text);
+        }
+        // Fallback: simple text with line breaks
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML.replace(/\n/g, '<br>');
+    }
+
+    // Render read-only view (non-logged-in users)
+    var readOnly = document.getElementById('wikiReadOnly');
+    if (readOnly) {
+        readOnly.innerHTML = renderMarkdown(rawContent);
+    }
+
+    // Render view mode for logged-in users (default)
+    var rendered = document.getElementById('wikiRendered');
+    if (rendered) {
+        rendered.innerHTML = renderMarkdown(rawContent);
+    }
+
+    // --- View/Edit mode toggling ---
+    var viewMode = document.getElementById('wikiViewMode');
+    var editMode = document.getElementById('wikiEditMode');
+    var editBtn = document.getElementById('wikiEditBtn');
+    var cancelBtn = document.getElementById('wikiCancelBtn');
+    var formatHint = document.getElementById('wikiFormatHint');
+    var editor = document.getElementById('wikiEditor');
+
+    if (editBtn && viewMode && editMode) {
+        editBtn.addEventListener('click', function() {
+            viewMode.style.display = 'none';
+            editMode.style.display = '';
+            if (formatHint) formatHint.style.display = '';
+            if (editor) editor.focus();
+        });
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                // Reset editor content and switch back to view
+                if (editor) editor.value = rawContent || '';
+                editMode.style.display = 'none';
+                viewMode.style.display = '';
+                if (formatHint) formatHint.style.display = 'none';
+            });
+        }
+    }
+
+    // --- Formatting toolbar logic ---
+    if (editor) {
+        // Wrap/insert Markdown around selection
+        function wrapSelection(before, after) {
+            var start = editor.selectionStart;
+            var end = editor.selectionEnd;
+            var text = editor.value;
+            var selected = text.substring(start, end);
+            // If already wrapped, unwrap
+            var preBefore = text.substring(Math.max(0, start - before.length), start);
+            var postAfter = text.substring(end, end + after.length);
+            if (preBefore === before && postAfter === after) {
+                editor.value = text.substring(0, start - before.length) + selected + text.substring(end + after.length);
+                editor.selectionStart = start - before.length;
+                editor.selectionEnd = end - before.length;
+            } else {
+                var replacement = before + (selected || 'text') + after;
+                editor.value = text.substring(0, start) + replacement + text.substring(end);
+                editor.selectionStart = start + before.length;
+                editor.selectionEnd = start + before.length + (selected || 'text').length;
+            }
+            editor.focus();
+        }
+
+        function getLineInfo() {
+            var start = editor.selectionStart;
+            var text = editor.value;
+            var lineStart = text.lastIndexOf('\n', start - 1) + 1;
+            var lineEnd = text.indexOf('\n', start);
+            if (lineEnd === -1) lineEnd = text.length;
+            return { lineStart: lineStart, lineEnd: lineEnd, line: text.substring(lineStart, lineEnd) };
+        }
+
+        function replaceLine(lineStart, lineEnd, newLine) {
+            var text = editor.value;
+            editor.value = text.substring(0, lineStart) + newLine + text.substring(lineEnd);
+            editor.selectionStart = editor.selectionEnd = lineStart + newLine.length;
+            editor.focus();
+        }
+
+        document.querySelector('.fmt-toolbar').addEventListener('click', function(e) {
+            var btn = e.target.closest('.fmt-btn');
+            if (!btn) return;
+            var fmt = btn.getAttribute('data-fmt');
+
+            switch (fmt) {
+                case 'bold':
+                    wrapSelection('**', '**');
+                    break;
+                case 'italic':
+                    wrapSelection('*', '*');
+                    break;
+                case 'underline':
+                    wrapSelection('<u>', '</u>');
+                    break;
+                case 'heading-up': {
+                    var info = getLineInfo();
+                    var match = info.line.match(/^(#{0,6})\s*(.*)/);
+                    var hashes = match[1] || '';
+                    var rest = match[2] || '';
+                    if (hashes.length === 0) {
+                        replaceLine(info.lineStart, info.lineEnd, '# ' + rest);
+                    } else if (hashes.length > 1) {
+                        replaceLine(info.lineStart, info.lineEnd, hashes.substring(1) + ' ' + rest);
+                    }
+                    break;
+                }
+                case 'heading-down': {
+                    var info = getLineInfo();
+                    var match = info.line.match(/^(#{0,6})\s*(.*)/);
+                    var hashes = match[1] || '';
+                    var rest = match[2] || '';
+                    if (hashes.length > 0 && hashes.length < 6) {
+                        replaceLine(info.lineStart, info.lineEnd, hashes + '# ' + rest);
+                    } else if (hashes.length === 6) {
+                        replaceLine(info.lineStart, info.lineEnd, rest);
+                    }
+                    break;
+                }
+                case 'list': {
+                    var info = getLineInfo();
+                    if (info.line.match(/^- /)) {
+                        replaceLine(info.lineStart, info.lineEnd, info.line.substring(2));
+                    } else {
+                        replaceLine(info.lineStart, info.lineEnd, '- ' + info.line);
+                    }
+                    break;
+                }
+                case 'code':
+                    wrapSelection('`', '`');
+                    break;
+                case 'link': {
+                    var start = editor.selectionStart;
+                    var end = editor.selectionEnd;
+                    var selected = editor.value.substring(start, end);
+                    var text = editor.value;
+                    if (selected) {
+                        var replacement = '[' + selected + '](url)';
+                        editor.value = text.substring(0, start) + replacement + text.substring(end);
+                        editor.selectionStart = start + selected.length + 2;
+                        editor.selectionEnd = start + selected.length + 5;
+                    } else {
+                        var replacement = '[link text](url)';
+                        editor.value = text.substring(0, start) + replacement + text.substring(end);
+                        editor.selectionStart = start + 1;
+                        editor.selectionEnd = start + 10;
+                    }
+                    editor.focus();
+                    break;
+                }
+            }
+        });
+
+        // Keyboard shortcuts
+        editor.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                if (e.key === 'b') { e.preventDefault(); wrapSelection('**', '**'); }
+                if (e.key === 'i') { e.preventDefault(); wrapSelection('*', '*'); }
+                if (e.key === 'u') { e.preventDefault(); wrapSelection('<u>', '</u>'); }
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

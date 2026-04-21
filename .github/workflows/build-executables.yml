@@ -1,0 +1,206 @@
+name: Build Executables
+
+on:
+  push:
+    branches:
+      - ims-app
+    paths-ignore:
+      - 'VERSION'        # Don't re-trigger on version bump commits
+  schedule:
+    - cron: '0 5 * * *'  # Run daily at midnight EST (5:00 UTC)
+  workflow_dispatch:      # Allow manual trigger from GitHub UI
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ims-app
+          fetch-depth: 0
+      - name: Check for code changes since last release
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Manual trigger — building"
+            exit 0
+          fi
+
+          # Find the last release tag to compare against
+          LAST_TAG=$(git tag --sort=-creatordate | head -1)
+          if [ -z "$LAST_TAG" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "No previous release — building"
+            exit 0
+          fi
+
+          # Check for code changes since the last release (ignore VERSION file and merge commits)
+          CHANGES=$(git diff --name-only "$LAST_TAG"..HEAD -- . ':!VERSION' | head -1)
+          if [ -n "$CHANGES" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Found code changes since $LAST_TAG — building"
+            git diff --name-only "$LAST_TAG"..HEAD -- . ':!VERSION' | head -20
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "No code changes since $LAST_TAG — skipping build"
+          fi
+
+  bump-version:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ims-app
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bump patch version
+        id: bump
+        run: |
+          CURRENT=$(cat VERSION | tr -d '[:space:]')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "$NEW_VERSION" > VERSION
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumped version: $CURRENT -> $NEW_VERSION"
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "Bump version to v${{ steps.bump.outputs.version }} [skip ci]"
+          git push origin ims-app
+
+  build-windows:
+    needs: [check-changes, bump-version]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ims-app
+
+      - name: Set up Python 3.8 (Windows 7 compatible)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_win7.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --clean scripts/inventory.spec
+
+      - name: Download and bundle MinGit (portable git for Windows)
+        shell: pwsh
+        run: |
+          $MinGitVersion = "2.47.0"
+          $MinGitUrl = "https://github.com/git-for-windows/git/releases/download/v${MinGitVersion}.windows.1/MinGit-${MinGitVersion}-64-bit.zip"
+          $ZipPath = "$env:TEMP\MinGit.zip"
+          $ExtractPath = "dist\InventorySystem\git"
+          Write-Host "Downloading MinGit $MinGitVersion..."
+          Invoke-WebRequest -Uri $MinGitUrl -OutFile $ZipPath -UseBasicParsing
+          Write-Host "Extracting MinGit to $ExtractPath..."
+          Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath -Force
+          Remove-Item $ZipPath
+          Write-Host "Bundled git.exe at:"
+          Get-ChildItem "$ExtractPath\cmd\git.exe"
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: InventorySystem-Windows
+          path: dist/InventorySystem/
+
+  build-macos:
+    needs: [check-changes, bump-version]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ims-app
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --clean scripts/inventory.spec
+
+      - name: Ad-hoc code sign (prevents Gatekeeper quarantine errors)
+        run: |
+          find dist/InventorySystem/ -type f \( -name "*.so" -o -name "*.dylib" -o -perm +111 \) -exec codesign --force --sign - {} \;
+
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: InventorySystem-macOS
+          path: dist/InventorySystem/
+
+  release:
+    needs: [bump-version, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ims-app
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: InventorySystem-Windows
+          path: InventorySystem-Windows/
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: InventorySystem-macOS
+          path: InventorySystem-macOS/
+
+      - name: Zip builds
+        run: |
+          cd InventorySystem-Windows && zip -r ../InventorySystem-Windows.zip . && cd ..
+          cd InventorySystem-macOS && zip -r ../InventorySystem-macOS.zip . && cd ..
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v${{ needs.bump-version.outputs.version }}"
+          DATE=$(date -u +%Y-%m-%d)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+
+          gh release create "$VERSION" \
+            InventorySystem-Windows.zip InventorySystem-macOS.zip \
+            --title "$VERSION" \
+            --notes "**Version:** $VERSION
+          **Built:** $DATE
+          **Commit:** \`$SHORT_SHA\` — $COMMIT_MSG
+
+          ### Downloads
+          - **InventorySystem-macOS.zip** — macOS 12+ (Apple Silicon)
+          - **InventorySystem-Windows.zip** — Windows 7+
+
+          Unzip and run. See [README](../../blob/ims-app/README.md) for setup instructions."

@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <h2 style="font-size: 24px; font-weight: 700;">Inventory</h2>
+        <div style="margin-top: 6px; font-size: 13px; color: var(--text-muted);">
+            Total: {{ total_devices }}{% if total_devices %} (Showing {{ start_index }}-{{ end_index }}){% endif %}
+        </div>
+        {% if selected_codename %}
+        <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 13px; color: var(--text-muted);">Filtered by product:</span>
+            <span style="background: rgba(6,182,212,0.12); color: var(--accent-cyan); padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600;">{{ selected_codename }}</span>
+            <a href="{{ url_for('device_list') }}" style="font-size: 12px; color: var(--text-muted); text-decoration: none;">&times; Clear</a>
+        </div>
+        {% endif %}
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="position: relative;" id="exportDropdown">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="var m=document.getElementById('exportMenu');m.style.display=m.style.display==='block'?'none':'block'">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Export
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-left: 2px;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div id="exportMenu" style="display:none; position:absolute; top:100%; right:0; margin-top:4px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; overflow:hidden; min-width:160px; z-index:20; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                <a href="{{ url_for('export_csv', q=q, category=selected_category, status=selected_status, connectivity=selected_connectivity, location=selected_location) }}" style="display:flex; align-items:center; gap:8px; padding:10px 14px; color:var(--text-primary); text-decoration:none; font-size:13px; transition:background 0.1s;" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background='transparent'">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    CSV (.csv)
+                </a>
+                <a href="{{ url_for('export_xlsx', q=q, category=selected_category, status=selected_status, connectivity=selected_connectivity, location=selected_location) }}" style="display:flex; align-items:center; gap:8px; padding:10px 14px; color:var(--text-primary); text-decoration:none; font-size:13px; border-top:1px solid var(--border-color); transition:background 0.1s;" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background='transparent'">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Excel (.xlsx)
+                </a>
+            </div>
+        </div>
+        {% if has_permission('devices') %}
+        <div style="position: relative;" id="importDropdown">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="var m=document.getElementById('importMenu');m.style.display=m.style.display==='block'?'none':'block'">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                Import
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-left: 2px;"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div id="importMenu" style="display:none; position:absolute; top:100%; right:0; margin-top:4px; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; overflow:hidden; min-width:220px; z-index:20; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                <form method="POST" action="{{ url_for('import_devices_xlsx') }}" enctype="multipart/form-data" style="padding:12px 14px;">
+                    <label style="display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">Excel (.xlsx)</label>
+                    <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required style="font-size:12px; width:100%; margin-bottom:10px;">
+                    <button type="submit" class="btn btn-primary btn-sm" style="width:100%; justify-content:center;">Upload &amp; import</button>
+                    <p style="font-size:11px; color:var(--text-muted); margin-top:10px; line-height:1.45;">Use <strong>Export → Excel</strong> as the column template. Device ID, Barcode, Created, and Updated are ignored. <strong>Merged Category</strong> cells use the merge’s top-left (or the first non-empty cell on the merge’s first row). Empty Category cells inherit the row above (skipping blank lines). Use real <strong>Merge Cells</strong> — “Center Across Selection” is not a merge and will not fill Category down. Start a new category by typing it in the first row of the new group.</p>
+                </form>
+            </div>
+        </div>
+        <form id="bulkDeleteForm" method="POST" action="{{ url_for('device_bulk_delete') }}" style="display:inline-flex; margin:0; align-items:center;" onsubmit="return window.confirmBulkDelete()">
+            <input type="hidden" name="device_ids" id="bulkDeleteIds">
+            <button type="submit" id="bulkDeleteBtn" class="btn btn-danger btn-sm" disabled title="Select devices using the checkboxes in the table">
+                Delete Selected (0)
+            </button>
+        </form>
+        <span style="font-size:11px; color:var(--text-muted); max-width:240px; line-height:1.35;">Bulk delete permanently removes selected devices from the database (any status).</span>
+        <a href="{{ url_for('device_add') }}" class="btn btn-primary">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+            Add Device
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Search and Filters -->
+<div class="card" style="margin-bottom: 24px; cursor: default;">
+    <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px;">
+        <div style="flex: 1; position: relative;">
+            <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: 0.4;" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            <input type="text" id="searchInput" placeholder="Search devices..." style="padding-left: 36px;" value="{{ q }}">
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('filters').style.display = document.getElementById('filters').style.display === 'none' ? 'grid' : 'none'">Filters</button>
+    </div>
+    <div id="filters" class="filter-grid" style="display: {% if selected_category or selected_status or selected_connectivity or selected_location %}grid{% else %}none{% endif %}; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <div>
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Category</label>
+            <select id="filterCategory">
+                <option value="">All Categories</option>
+                {% for cat in categories %}
+                <option value="{{ cat.name }}" {% if selected_category == cat.name %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
+            <select id="filterStatus">
+                <option value="">All Statuses</option>
+                <option value="available" {% if selected_status == 'available' %}selected{% endif %}>Available</option>
+                <option value="checked_out" {% if selected_status == 'checked_out' %}selected{% endif %}>Checked Out</option>
+                <option value="lost" {% if selected_status == 'lost' %}selected{% endif %}>Lost</option>
+                <option value="retired" {% if selected_status == 'retired' %}selected{% endif %}>Retired</option>
+            </select>
+        </div>
+        <div>
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Connectivity Type/Version</label>
+            <input type="text" id="filterConnectivity" value="{{ selected_connectivity }}" placeholder="e.g. Wi-Fi 6E">
+        </div>
+        <div>
+            <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Location</label>
+            <input type="text" id="filterLocation" value="{{ selected_location }}" placeholder="e.g. Lab A">
+        </div>
+    </div>
+</div>
+
+<!-- Device list -->
+    <div class="card" style="padding: 0; cursor: default;">
+        <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    {% if has_permission('devices') %}
+                    <th style="width: 36px;">
+                        <input type="checkbox" id="selectAllDevices" aria-label="Select all visible devices">
+                    </th>
+                    {% endif %}
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Location</th>
+                    <th>Assigned To</th>
+                    <th>Barcode</th>
+                    <th>Connectivity Type/Version</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for device in devices %}
+                <tr style="cursor: pointer;"
+                    data-device-id="{{ device.device_id }}"
+                    data-name="{{ device.name|lower }}"
+                    data-category="{{ device.category|lower }}"
+                    data-connectivity="{{ device.connectivity|lower }}"
+                    data-status="{{ device.status|lower }}"
+                    data-location="{{ (device.location or '')|lower }}"
+                    data-assigned="{{ (device.assigned_to or '')|lower }}"
+                    data-barcode="{{ (device.barcode_value or '')|lower }}"
+                    data-source="{{ 'vendor supplied' if device.vendor_supplied else 'hp owned' }}"
+                    data-model="{{ (device.model_number or '')|lower }}"
+                    data-serial="{{ (device.serial_number or '')|lower }}"
+                    data-manufacturer="{{ (device.manufacturer or '')|lower }}"
+                    onclick="if(!event.target.closest('input'))window.location='{{ url_for('device_detail', device_id=device.device_id) }}'">
+                    {% if has_permission('devices') %}
+                    <td>
+                        <input type="checkbox" class="row-device-checkbox" value="{{ device.device_id }}" aria-label="Select {{ device.name }}">
+                    </td>
+                    {% endif %}
+                    <td style="font-weight: 600;">{{ device.name }}</td>
+                    <td style="color: var(--text-secondary); font-size: 13px;">{{ device.category }}</td>
+                    <td><span class="badge badge-{{ device.status }}">{{ device.status }}</span></td>
+                    <td style="color: var(--text-secondary); font-size: 13px;">{{ device.location }}</td>
+                    <td style="color: var(--text-secondary); font-size: 13px;">{{ device.assigned_to }}</td>
+                    <td class="font-mono" style="font-size: 12px; color: var(--text-muted);">{{ device.barcode_value }}</td>
+                    <td style="color: var(--text-secondary); font-size: 13px;">{{ device.connectivity }}</td>
+                    <td style="font-size: 12px;">
+                        {% if device.vendor_supplied %}
+                        <span style="background: rgba(139,92,246,0.12); color: #a78bfa; padding: 2px 8px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;">Vendor Supplied</span>
+                        {% else %}
+                        <span style="background: rgba(59,130,246,0.12); color: #3b82f6; padding: 2px 8px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;">HP Owned</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+    {% if total_devices > 0 %}
+    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding: 12px 16px;">
+        <span style="font-size: 12px; color: var(--text-muted);">
+            Showing {{ start_index }}-{{ end_index }} of {{ total_devices }}
+        </span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <label for="perPageSelect" style="font-size: 12px; color: var(--text-muted);">Rows:</label>
+            <select id="perPageSelect" style="min-width: 78px; height: 32px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 0 26px 0 10px; font-size: 12px;">
+                {% for option in per_page_options %}
+                <option value="{{ option }}" {% if per_page == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+            <a class="btn btn-secondary btn-sm {% if page <= 1 %}disabled{% endif %}"
+               href="{% if page > 1 %}{{ url_for('device_list', q=q, category=selected_category, status=selected_status, connectivity=selected_connectivity, location=selected_location, codename=selected_codename, page=1, per_page=per_page) }}{% else %}#{% endif %}"
+               style="height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; {% if page <= 1 %}opacity:0.45; pointer-events:none;{% endif %}"
+               {% if page <= 1 %}aria-disabled="true" onclick="return false;"{% endif %}>
+                Home
+            </a>
+            <a class="btn btn-secondary btn-sm {% if page <= 1 %}disabled{% endif %}"
+               href="{% if page > 1 %}{{ url_for('device_list', q=q, category=selected_category, status=selected_status, connectivity=selected_connectivity, location=selected_location, codename=selected_codename, page=page-1, per_page=per_page) }}{% else %}#{% endif %}"
+               style="height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; {% if page <= 1 %}opacity:0.45; pointer-events:none;{% endif %}"
+               {% if page <= 1 %}aria-disabled="true" onclick="return false;"{% endif %}>
+                Previous
+            </a>
+            <span style="font-size: 12px; color: var(--text-muted); min-width: 96px; text-align: center; font-family: 'JetBrains Mono', monospace;">
+                Page {{ page }} / {{ total_pages }}
+            </span>
+            <form id="gotoPageForm" style="display: inline-flex; gap: 6px; align-items: center; margin: 0; padding: 0 6px;">
+                <label for="gotoPageInput" style="font-size: 12px; color: var(--text-muted);">Go:</label>
+                <input id="gotoPageInput" type="number" min="1" max="{{ total_pages }}" value="{{ page }}" style="width: 68px; height: 32px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 8px; padding: 0 8px; font-size: 12px;">
+                <button type="submit" class="btn btn-secondary btn-sm" style="height: 32px; padding: 0 10px; border-radius: 8px;">Go</button>
+            </form>
+            <a class="btn btn-secondary btn-sm {% if page >= total_pages %}disabled{% endif %}"
+               href="{% if page < total_pages %}{{ url_for('device_list', q=q, category=selected_category, status=selected_status, connectivity=selected_connectivity, location=selected_location, codename=selected_codename, page=page+1, per_page=per_page) }}{% else %}#{% endif %}"
+               style="height: 32px; padding: 0 12px; border-radius: 8px; display: inline-flex; align-items: center; {% if page >= total_pages %}opacity:0.45; pointer-events:none;{% endif %}"
+               {% if page >= total_pages %}aria-disabled="true" onclick="return false;"{% endif %}>
+                Next
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+        {% if not devices %}
+        <div style="text-align: center; padding: 48px 24px;">
+            <svg width="48" height="48" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin: 0 auto 16px;"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+            <p style="color: var(--text-muted); font-size: 14px;">No devices found.</p>
+            <a href="{{ url_for('device_add') }}" style="color: var(--accent-blue); font-size: 14px;">Add your first device →</a>
+        </div>
+        {% endif %}
+    </div>
+
+<script>
+(function() {
+    var searchInput = document.getElementById('searchInput');
+    var filterCategory = document.getElementById('filterCategory');
+    var filterStatus = document.getElementById('filterStatus');
+    var filterConnectivity = document.getElementById('filterConnectivity');
+    var filterLocation = document.getElementById('filterLocation');
+    var perPageSelect = document.getElementById('perPageSelect');
+    var gotoPageForm = document.getElementById('gotoPageForm');
+    var gotoPageInput = document.getElementById('gotoPageInput');
+    var tbody = document.querySelector('table tbody');
+    if (!tbody) return;
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    var canBulkDelete = {{ 'true' if has_permission('devices') else 'false' }};
+    var selectAll = document.getElementById('selectAllDevices');
+    var bulkDeleteForm = document.getElementById('bulkDeleteForm');
+    var bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    var bulkDeleteIds = document.getElementById('bulkDeleteIds');
+
+    function getVisibleCheckboxes() {
+        return rows
+            .filter(function(row) { return row.style.display !== 'none'; })
+            .map(function(row) { return row.querySelector('.row-device-checkbox'); })
+            .filter(Boolean);
+    }
+
+    function syncBulkDeleteUi() {
+        if (!canBulkDelete || !bulkDeleteForm || !bulkDeleteBtn || !bulkDeleteIds) return;
+        var checked = Array.prototype.slice.call(document.querySelectorAll('.row-device-checkbox:checked'))
+            .map(function(cb) { return cb.value; });
+        bulkDeleteIds.value = checked.join('\n');
+        bulkDeleteBtn.textContent = 'Delete Selected (' + checked.length + ')';
+        bulkDeleteBtn.disabled = checked.length === 0;
+        if (selectAll) {
+            var visibleBoxes = getVisibleCheckboxes();
+            var checkedVisible = visibleBoxes.filter(function(cb) { return cb.checked; }).length;
+            selectAll.checked = visibleBoxes.length > 0 && checkedVisible === visibleBoxes.length;
+            selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visibleBoxes.length;
+        }
+    }
+
+    window.confirmBulkDelete = function() {
+        if (!bulkDeleteIds) return false;
+        var ids = (bulkDeleteIds.value || '').split('\n').filter(Boolean);
+        if (!ids.length) {
+            alert('No devices selected.');
+            return false;
+        }
+        var msg = 'Delete ' + ids.length + ' selected device(s)? This cannot be undone.';
+        return window.confirm(msg);
+    };
+
+    var refreshTimer = null;
+    function refreshWithFilters() {
+        var params = new URLSearchParams(window.location.search);
+        var q = searchInput.value.trim();
+        var cat = filterCategory.value;
+        var status = filterStatus.value;
+        var conn = filterConnectivity.value.trim();
+        var loc = filterLocation.value.trim();
+
+        if (q) params.set('q', q); else params.delete('q');
+        if (cat) params.set('category', cat); else params.delete('category');
+        if (status) params.set('status', status); else params.delete('status');
+        if (conn) params.set('connectivity', conn); else params.delete('connectivity');
+        if (loc) params.set('location', loc); else params.delete('location');
+        if (perPageSelect && perPageSelect.value) params.set('per_page', perPageSelect.value);
+        params.set('page', '1');
+        window.location = "{{ url_for('device_list') }}?" + params.toString();
+    }
+
+    function scheduleRefresh(delayMs) {
+        if (refreshTimer) window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(refreshWithFilters, delayMs);
+    }
+
+    searchInput.addEventListener('input', function() { scheduleRefresh(300); });
+    filterCategory.addEventListener('change', function() { refreshWithFilters(); });
+    filterStatus.addEventListener('change', function() { refreshWithFilters(); });
+    filterConnectivity.addEventListener('input', function() { scheduleRefresh(300); });
+    filterLocation.addEventListener('input', function() { scheduleRefresh(300); });
+    if (perPageSelect) {
+        perPageSelect.addEventListener('change', function() {
+            refreshWithFilters();
+        });
+    }
+    if (gotoPageForm && gotoPageInput) {
+        gotoPageForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var maxPage = {{ total_pages }};
+            var requested = parseInt(gotoPageInput.value || '1', 10);
+            if (isNaN(requested)) requested = 1;
+            requested = Math.max(1, Math.min(maxPage, requested));
+            var params = new URLSearchParams(window.location.search);
+            params.set('page', String(requested));
+            if (perPageSelect && perPageSelect.value) params.set('per_page', perPageSelect.value);
+            window.location = "{{ url_for('device_list') }}?" + params.toString();
+        });
+    }
+    if (canBulkDelete) {
+        rows.forEach(function(row) {
+            var cb = row.querySelector('.row-device-checkbox');
+            if (cb) cb.addEventListener('change', syncBulkDeleteUi);
+        });
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                getVisibleCheckboxes().forEach(function(cb) {
+                    cb.checked = selectAll.checked;
+                });
+                syncBulkDeleteUi();
+            });
+        }
+        syncBulkDeleteUi();
+    }
+})();
+
+// Close export / import dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    var dd = document.getElementById('exportDropdown');
+    var menu = document.getElementById('exportMenu');
+    if (dd && menu && !dd.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+    var idd = document.getElementById('importDropdown');
+    var imenu = document.getElementById('importMenu');
+    if (idd && imenu && !idd.contains(e.target)) {
+        imenu.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

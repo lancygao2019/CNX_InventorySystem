@@ -1,0 +1,555 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Lightbox overlay */
+    #labelLightbox {
+        display: none; position: fixed; inset: 0; z-index: 1000;
+        background: rgba(0,0,0,0.75); align-items: center; justify-content: center;
+        cursor: zoom-out;
+    }
+    #labelLightbox img {
+        max-width: 90vw; max-height: 90vh; border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    /* Attachments */
+    .attach-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px; margin-top: 12px;
+    }
+    .attach-card {
+        background: var(--bg-secondary); border: 1px solid var(--border-color);
+        border-radius: 8px; overflow: hidden; transition: border-color 0.15s;
+    }
+    .attach-card:hover { border-color: var(--accent-blue); }
+    .attach-preview {
+        width: 100%; height: 140px; object-fit: cover; display: block;
+        background: var(--bg-primary);
+    }
+    .attach-preview-placeholder {
+        width: 100%; height: 140px; display: flex; align-items: center;
+        justify-content: center; background: var(--bg-primary);
+        color: var(--text-muted); font-size: 32px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.05em; text-decoration: none;
+    }
+    .attach-info { padding: 10px 12px; }
+    .attach-name {
+        font-size: 13px; font-weight: 600; color: var(--text-primary);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        text-decoration: none; display: block;
+    }
+    .attach-name:hover { color: var(--accent-blue); }
+    .attach-meta {
+        font-size: 11px; color: var(--text-muted); margin-top: 4px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .attach-delete {
+        background: none; border: none; color: var(--text-muted); cursor: pointer;
+        font-size: 14px; padding: 2px 6px; border-radius: 4px; opacity: 0.5;
+        transition: opacity 0.15s, color 0.15s;
+    }
+    .attach-delete:hover { opacity: 1; color: var(--accent-red); }
+    .upload-area {
+        border: 2px dashed var(--border-color); border-radius: 8px;
+        padding: 20px; text-align: center; transition: border-color 0.15s;
+        cursor: pointer; margin-top: 12px;
+    }
+    .upload-area:hover, .upload-area.dragover { border-color: var(--accent-blue); }
+    .upload-area input[type="file"] { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <div>
+        <a href="{{ url_for('device_list') }}" style="color: var(--text-muted); text-decoration: none; font-size: 13px;">← Back to Devices</a>
+        <h2 style="font-size: 24px; font-weight: 700; margin-top: 8px;">{{ device.name }}</h2>
+    </div>
+    {% if has_permission('devices') %}
+    <div style="display: flex; gap: 8px;">
+        <a href="{{ url_for('device_edit', device_id=device.device_id) }}" class="btn btn-secondary btn-sm">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit
+        </a>
+        {% if device.status != 'retired' and has_permission('retire') %}
+        <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('retireModal').style.display='flex'">Retire</button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="grid-responsive" style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+    <!-- Left column: Device info -->
+    <div>
+        <!-- Device Information -->
+        <div class="card" style="margin-bottom: 16px; cursor: default;">
+            <div class="section-label">Device Information</div>
+            <div class="grid-responsive" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Category</div>
+                    <div style="font-size: 14px;">
+                        {{ device.category or '—' }}
+                        {% if device.device_type and device.device_type != 'N/A' %} — {{ device.device_type }}{% endif %}
+                        {% if device.is_mesh %} <span style="background: rgba(99,102,241,0.12); color: #818cf8; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; margin-left: 4px;">Mesh</span>{% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Status</div>
+                    <span class="badge badge-{{ device.status }}">{{ device.status }}</span>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Manufacturer</div>
+                    <div style="font-size: 14px;">{{ device.manufacturer or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Model Number</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ device.model_number or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">HW Version</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ device.hw_version or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Serial Number</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ device.serial_number or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Connectivity Type/Version</div>
+                    <div style="font-size: 14px;">{{ device.connectivity or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Ownership</div>
+                    <div style="font-size: 14px;">
+                        {% if device.vendor_supplied %}
+                        <span style="background: rgba(139,92,246,0.12); color: #a78bfa; padding: 3px 10px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;">Vendor Supplied</span>
+                        {% else %}
+                        <span style="background: rgba(59,130,246,0.12); color: #3b82f6; padding: 3px 10px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;">HP Owned</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Location</div>
+                    <div style="font-size: 14px;">{{ device.location or '—' }}</div>
+                </div>
+                {% if device.assigned_to %}
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Assigned To</div>
+                    <div style="font-size: 14px; color: var(--accent-amber);">{{ device.assigned_to }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if device.notes %}
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Notes</div>
+                <div style="font-size: 14px; color: var(--text-secondary);">{{ device.notes }}</div>
+            </div>
+            {% endif %}
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); display: flex; gap: 24px;">
+                <div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Created:</span>
+                    <span class="font-mono" style="font-size: 12px; color: var(--text-secondary);">{{ device.created_at }}</span>
+                </div>
+                <div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Updated:</span>
+                    <span class="font-mono" style="font-size: 12px; color: var(--text-secondary);">{{ device.updated_at }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Check-out / Check-in (admin only) -->
+        {% if has_permission('devices') %}
+        {% if device.status == 'available' %}
+        <div class="card" style="margin-bottom: 16px; cursor: default; border: 1px solid rgba(16,185,129,0.3);">
+            <div class="section-label" style="color: var(--accent-green);">Check Out Device</div>
+            <form method="POST" action="{{ url_for('device_checkout', device_id=device.device_id) }}" style="display: flex; gap: 12px; align-items: end;">
+                <div style="flex: 1; position: relative;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Assign To</label>
+                    <input type="text" name="assigned_to" id="checkoutAssignee" autocomplete="off" required placeholder="Person's name">
+                    <div id="assigneeDd" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:100; background:var(--bg-card); border:1px solid var(--border-color); border-radius:0 0 8px 8px; max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom: 2px;">Check Out</button>
+            </form>
+        </div>
+        {% elif device.status == 'checked_out' %}
+        <div class="card" style="margin-bottom: 16px; cursor: default; border: 1px solid rgba(245,158,11,0.3); background: rgba(245,158,11,0.05);">
+            <div class="section-label" style="color: var(--accent-amber);">Device Checked Out</div>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 12px;">
+                Currently assigned to <strong style="color: var(--accent-amber);">{{ device.assigned_to }}</strong>
+            </p>
+            <form method="POST" action="{{ url_for('device_checkin', device_id=device.device_id) }}">
+                <button type="submit" class="btn btn-primary btn-sm">Check In</button>
+            </form>
+        </div>
+        {% endif %}
+        {% elif device.status == 'checked_out' %}
+        <div class="card" style="margin-bottom: 16px; cursor: default; border: 1px solid rgba(245,158,11,0.3); background: rgba(245,158,11,0.05);">
+            <div class="section-label" style="color: var(--accent-amber);">Device Checked Out</div>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 0;">
+                Currently assigned to <strong style="color: var(--accent-amber);">{{ device.assigned_to }}</strong>
+            </p>
+        </div>
+        {% endif %}
+
+        {% if prod_ref %}
+        <!-- Product Reference Info -->
+        <div class="card" style="margin-bottom: 16px; cursor: default; border: 1px solid rgba(6,182,212,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div class="section-label" style="margin-bottom: 0;">Product Reference</div>
+                <a href="{{ url_for('product_wiki', ref_id=prod_ref.ref_id) }}" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px; gap: 4px;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+                    Product Wiki
+                </a>
+            </div>
+            <div class="grid-responsive" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px;">
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Codename</div>
+                    <div style="font-size: 14px; font-weight: 600;">{{ prod_ref.codename }}{% if device.variant %} <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--bg-primary); padding: 1px 6px; border-radius: 3px; text-transform: uppercase;">{{ device.variant }}</span>{% endif %}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Model Name</div>
+                    <div style="font-size: 14px;">{{ prod_ref.model_name or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Print Technology</div>
+                    <div style="font-size: 14px;">
+                        {% if prod_ref.print_technology %}
+                        <span style="background: {% if prod_ref.print_technology == 'Laser' %}rgba(139,92,246,0.12){% else %}rgba(59,130,246,0.12){% endif %}; color: {% if prod_ref.print_technology == 'Laser' %}#a78bfa{% else %}#3b82f6{% endif %}; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600;">{{ prod_ref.print_technology }}</span>
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Release Year</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ prod_ref.year or '—' }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Wi-Fi Gen</div>
+                    <div class="font-mono" style="font-size: 14px;">
+                        {% if prod_ref.wifi_gen %}
+                        <span style="background: rgba(59,130,246,0.12); color: var(--accent-blue); padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600;">{{ prod_ref.wifi_gen }}</span>
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">FW Codebase</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ prod_ref.fw_codebase or '—' }}</div>
+                </div>
+                {% if prod_ref.chip_manufacturer %}
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Wireless Chip Vendor</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ prod_ref.chip_manufacturer }}</div>
+                </div>
+                {% endif %}
+                {% if prod_ref.chip_codename %}
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Chip Codename</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ prod_ref.chip_codename }}</div>
+                </div>
+                {% endif %}
+                {% if prod_ref.predecessor %}
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Predecessor</div>
+                    <div style="font-size: 14px;">{{ prod_ref.predecessor }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Checkout History -->
+        {% set checkout_events = audit|selectattr('action', 'in', ['checked_out', 'returned'])|list %}
+        {% if checkout_events %}
+        <div class="card" style="cursor: default;">
+            <div class="section-label">Checkout History</div>
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Action</th>
+                        <th>Person</th>
+                        <th>By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in checkout_events %}
+                    <tr>
+                        <td class="font-mono" style="font-size: 12px; color: var(--text-muted); white-space: nowrap;">{{ entry.timestamp }}</td>
+                        <td>
+                            {% if entry.action == 'checked_out' %}
+                            <span style="background: rgba(245,158,11,0.12); color: #f59e0b; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">Checked Out</span>
+                            {% else %}
+                            <span style="background: rgba(59,130,246,0.12); color: #3b82f6; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">Returned</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 13px;">{{ entry.details|replace('Assigned to ', '')|replace('Returned from ', '') }}</td>
+                        <td style="font-size: 12px; color: var(--text-muted);">{{ entry.performed_by or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Device Notes (anyone can add) -->
+        <div class="card" style="margin-bottom: 16px; cursor: default;">
+            <div class="section-label">Notes</div>
+
+            {% if device_notes %}
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                {% for note in device_notes %}
+                <div style="padding: 12px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">{{ note.author }}</span>
+                        <span class="font-mono" style="font-size: 11px; color: var(--text-muted);">{{ note.created_at }}</span>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; word-wrap: break-word;">{{ note.content }}</div>
+                    {% if has_permission('devices') %}
+                    <form method="POST" action="{{ url_for('delete_device_note_route', device_id=device.device_id, note_id=note.note_id) }}"
+                          onsubmit="return confirm('Delete this note?')" style="margin-top: 6px; text-align: right;">
+                        <button type="submit" style="background: none; border: none; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s;"
+                                onmouseover="this.style.color='var(--accent-red)'" onmouseout="this.style.color='var(--text-muted)'">&times; Delete</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Add note form -->
+            <form method="POST" action="{{ url_for('add_device_note', device_id=device.device_id) }}">
+                {% if not current_user %}
+                <div style="margin-bottom: 8px;">
+                    <input type="text" name="author_name" placeholder="Your name (optional)" maxlength="100"
+                           style="width: 100%; max-width: 250px; font-size: 13px;">
+                </div>
+                {% endif %}
+                <div style="display: flex; gap: 8px; align-items: flex-end;">
+                    <textarea name="note_content" required placeholder="Add a note..." maxlength="2000"
+                              style="flex: 1; min-height: 60px; max-height: 200px; font-size: 13px; font-family: 'DM Sans', sans-serif; resize: vertical; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);"></textarea>
+                    <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom: 2px;">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        Add
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Attachments -->
+        <div class="card" style="margin-bottom: 16px; cursor: default;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="section-label" style="margin-bottom: 0;">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align: -2px;">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                    Attachments{% if attachments %} ({{ attachments|length }}){% endif %}
+                </div>
+            </div>
+
+            {% if attachments %}
+            <div class="attach-grid">
+                {% for att in attachments %}
+                <div class="attach-card">
+                    {% set is_image = att.content_type and att.content_type.startswith('image/') %}
+                    {% if is_image %}
+                    <a href="{{ url_for('device_attachment_preview', attachment_id=att.attachment_id) }}" target="_blank">
+                        <img src="{{ url_for('device_attachment_preview', attachment_id=att.attachment_id) }}" alt="{{ att.original_name }}" class="attach-preview">
+                    </a>
+                    {% else %}
+                    <a href="{{ url_for('device_download', attachment_id=att.attachment_id) }}" class="attach-preview-placeholder">
+                        {{ att.original_name.rsplit('.', 1)[-1] if '.' in att.original_name else '?' }}
+                    </a>
+                    {% endif %}
+                    <div class="attach-info">
+                        <a href="{{ url_for('device_download', attachment_id=att.attachment_id) }}" class="attach-name" title="{{ att.original_name }}">{{ att.original_name }}</a>
+                        <div class="attach-meta">
+                            <span>{{ '%.1f'|format(att.size_bytes / 1024) }} KB &middot; {{ att.uploaded_by }}</span>
+                            {% if has_permission('devices') %}
+                            <form method="POST" action="{{ url_for('device_delete_attachment', attachment_id=att.attachment_id) }}"
+                                  onsubmit="return confirm('Delete {{ att.original_name }}?')" style="margin: 0;">
+                                <button type="submit" class="attach-delete" title="Delete">&times;</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 12px;">No attachments yet.</p>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('device_upload', device_id=device.device_id) }}" enctype="multipart/form-data" id="deviceUploadForm">
+                <div class="upload-area" id="deviceUploadArea" onclick="document.getElementById('deviceFileInput').click()">
+                    <svg width="24" height="24" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24" style="margin-bottom: 8px;">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <p style="color: var(--text-muted); font-size: 13px; margin: 0;">Click to upload or drag and drop</p>
+                    <p style="color: var(--text-muted); font-size: 11px; margin: 4px 0 0;">Images, PDFs, documents, spreadsheets, logs (max 25 MB)</p>
+                    <input type="file" name="attachment" id="deviceFileInput" onchange="document.getElementById('deviceUploadForm').submit()">
+                </div>
+            </form>
+            <script>
+            (function() {
+                var area = document.getElementById('deviceUploadArea');
+                var form = document.getElementById('deviceUploadForm');
+                ['dragenter', 'dragover'].forEach(function(evt) {
+                    area.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); area.classList.add('dragover'); });
+                });
+                ['dragleave', 'drop'].forEach(function(evt) {
+                    area.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); area.classList.remove('dragover'); });
+                });
+                area.addEventListener('drop', function(e) {
+                    var files = e.dataTransfer.files;
+                    if (!files.length) return;
+                    var formData = new FormData();
+                    formData.append('attachment', files[0]);
+                    area.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Uploading...</p>';
+                    fetch(form.action, { method: 'POST', body: formData })
+                        .then(function() { window.location.reload(); })
+                        .catch(function() { window.location.reload(); });
+                });
+                document.addEventListener('dragover', function(e) { e.preventDefault(); });
+                document.addEventListener('drop', function(e) { e.preventDefault(); });
+            })();
+            </script>
+        </div>
+
+        <!-- Activity History -->
+        <div class="card" style="cursor: default;">
+            <div class="section-label">Activity History</div>
+            {% if audit %}
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                {% for entry in audit %}
+                <div style="display: flex; gap: 12px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+                    <div style="width: 8px; height: 8px; border-radius: 50; margin-top: 6px; flex-shrink: 0;
+                        background: {% if entry.action == 'added' %}var(--accent-green){% elif entry.action == 'checked_out' %}var(--accent-amber){% elif entry.action == 'returned' %}var(--accent-blue){% elif entry.action == 'retired' %}var(--accent-red){% else %}var(--text-muted){% endif %};
+                        border-radius: 50%;"></div>
+                    <div style="flex: 1;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="action-badge action-{{ entry.action }}">{{ entry.action|replace('_', ' ')|title }}</span>
+                            <span class="font-mono" style="font-size: 11px; color: var(--text-muted);">{{ entry.timestamp }}</span>
+                        </div>
+                        {% if entry.performed_by %}
+                        <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">by {{ entry.performed_by }}</div>
+                        {% endif %}
+                        {% if entry.details %}
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">{{ entry.details }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="color: var(--text-muted); font-size: 13px;">No activity recorded.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Right column: Label & Quick Info -->
+    <div>
+        <!-- Label Preview -->
+        <div class="card" style="margin-bottom: 16px; cursor: default; text-align: center;">
+            <div class="section-label">Device Label</div>
+            <div id="printable-label" style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 12px; cursor: zoom-in;"
+                 onclick="document.getElementById('labelLightbox').style.display='flex'">
+                <img src="{{ url_for('serve_label', device_id=device.device_id) }}?v={{ app_version }}" alt="Device Label"
+                     style="max-width: 100%; height: auto;">
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="printLabel()" class="btn btn-primary btn-sm" style="flex: 1; justify-content: center;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    Print Label
+                </button>
+                <a href="{{ url_for('serve_label', device_id=device.device_id) }}?v={{ app_version }}" download="{{ device.barcode_value }}.png" class="btn btn-secondary btn-sm" style="justify-content: center;" title="Download PNG">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- Quick Info -->
+        <div class="card" style="cursor: default;">
+            <div class="section-label">Quick Info</div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600;">Barcode Value</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ device.barcode_value }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600;">Activity Events</div>
+                    <div class="font-mono" style="font-size: 14px;">{{ audit|length }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Label Lightbox -->
+<div id="labelLightbox" onclick="this.style.display='none'">
+    <img src="{{ url_for('serve_label', device_id=device.device_id) }}?v={{ app_version }}" alt="Device Label (full size)">
+</div>
+
+<script>
+function printLabel() {
+    window.open('{{ url_for("serve_label_pdf", device_id=device.device_id) }}', '_blank');
+}
+
+(function() {
+    var inp = document.getElementById('checkoutAssignee');
+    if (!inp) return;
+    var dd = document.getElementById('assigneeDd');
+    var vals = null;
+
+    function render(q) {
+        if (!vals) return;
+        var filtered = vals.filter(function(v) { return v.toLowerCase().indexOf(q.toLowerCase()) >= 0; });
+        dd.innerHTML = '';
+        if (!filtered.length) { dd.style.display = 'none'; return; }
+        filtered.forEach(function(v) {
+            var item = document.createElement('div');
+            item.textContent = v;
+            item.style.cssText = 'padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border-color);';
+            item.addEventListener('mouseenter', function() { item.style.background = 'var(--bg-hover)'; });
+            item.addEventListener('mouseleave', function() { item.style.background = 'none'; });
+            item.addEventListener('mousedown', function(e) { e.preventDefault(); inp.value = v; dd.style.display = 'none'; });
+            dd.appendChild(item);
+        });
+        dd.style.display = 'block';
+    }
+
+    function load(cb) {
+        if (vals) { cb(); return; }
+        fetch('{{ url_for("api_distinct_values", field="assigned_to") }}')
+            .then(function(r) { return r.json(); })
+            .then(function(v) { vals = v; cb(); });
+    }
+
+    inp.addEventListener('focus', function() { load(function() { render(inp.value); }); });
+    inp.addEventListener('input', function() { load(function() { render(inp.value); }); });
+    inp.addEventListener('blur', function() { setTimeout(function() { dd.style.display = 'none'; }, 150); });
+})();
+</script>
+
+{% if device.status != 'retired' and has_permission('retire') %}
+<!-- Retire Modal -->
+<div id="retireModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;" onclick="if(event.target===this)this.style.display='none'">
+    <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; max-width: 440px; width: 90%;">
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 4px;">Retire Device</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">This device will be hidden from the default inventory list.</p>
+        <form method="POST" action="{{ url_for('device_retire', device_id=device.device_id) }}">
+            <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">Reason for retirement <span style="color: var(--accent-red);">*</span></label>
+            <textarea name="retire_reason" required rows="3" placeholder="e.g. Damaged, replaced, returned to vendor..."
+                      style="width: 100%; font-size: 13px; padding: 10px 12px; box-sizing: border-box; resize: vertical;"></textarea>
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('retireModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-danger">Retire Device</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

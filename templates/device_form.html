@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Edit Device{% else %}Add Device{% endif %}{% endblock %}
+
+{% block content %}
+<h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">
+    {% if is_edit %}Edit Device{% else %}Add New Device{% endif %}
+</h2>
+
+<form method="POST" action="{% if is_edit %}{{ url_for('device_edit', device_id=device_id) }}{% else %}{{ url_for('device_add') }}{% endif %}">
+    <!-- Identification -->
+    <div class="card" style="margin-bottom: 16px; cursor: default;">
+        <div class="section-label">Identification</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Category</label>
+                <select name="category" id="categorySelect" onchange="toggleCodename(); toggleOtherCategory(); toggleDeviceType(); updateRequiredFields()">
+                    <option value="">Select category...</option>
+                    {% set current_cat = device.get('category', '') if device is mapping else device.category if device else '' %}
+                    {% set is_other_custom = current_cat.startswith('Other - ') %}
+                    {% for cat in categories %}
+                    <option value="{{ cat.name }}" {% if (not is_other_custom and current_cat == cat.name) or (is_other_custom and cat.name == 'Other') %}selected{% endif %}>{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+                <div id="otherCategoryRow" style="display: none; margin-top: 8px;">
+                    <input type="text" name="other_detail" id="otherDetailInput"
+                           value="{{ current_cat[8:] if is_other_custom else '' }}"
+                           placeholder="Specify device type..." style="width: 100%;">
+                </div>
+            </div>
+            <div style="position: relative;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Connectivity Type/Version</label>
+                <input type="text" name="connectivity" id="connectivityInput" autocomplete="off" data-ac-field="connectivity"
+                       value="{{ device.get('connectivity', '') if device is mapping else device.connectivity if device else '' }}" placeholder="e.g. Wi-Fi 6E, BT 5.3">
+            </div>
+        </div>
+        <!-- Device Type dropdown (Connectivity Device / Endpoint Device) -->
+        <div id="deviceTypeRow" style="display: none; margin-top: 16px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Device Type</label>
+                    <select name="device_type" id="deviceTypeSelect">
+                        <option value="">Select type...</option>
+                    </select>
+                </div>
+                <div id="meshRow" style="display: none;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; padding: 10px 0;">
+                        <input type="hidden" name="is_mesh" value="0">
+                        <input type="checkbox" name="is_mesh" value="1" id="meshCheckbox"
+                               style="width: 16px; height: 16px;"
+                               {{ 'checked' if (device.get('is_mesh', 0) if device is mapping else (device.is_mesh if device and device.is_mesh is defined else 0))|int }}>
+                        Mesh Device
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div id="codenameRow" style="margin-top: 16px; display: none;">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <div style="position: relative;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                        Codename <span style="color: var(--accent-red);">*</span>
+                    </label>
+                    <input type="text" name="codename" id="codenameInput" autocomplete="off"
+                           value="{{ device.get('codename', '') if device is mapping else (device.codename if device and device.codename is defined else '') }}"
+                           placeholder="Start typing to search product reference..."
+                           oninput="searchCodename(this.value)" onfocus="searchCodename(this.value)">
+                    <div id="codenameSuggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:100; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; margin-top:4px; max-height:240px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Variant</label>
+                    <select name="variant" id="variantSelect">
+                        <option value="">None</option>
+                        {% set dev_variant = device.get('variant', '') if device is mapping else (device.variant if device and device.variant is defined else '') %}
+                        <option value="Base" {% if dev_variant == 'Base' %}selected{% endif %}>Base</option>
+                        <option value="Plus" {% if dev_variant == 'Plus' %}selected{% endif %}>Plus</option>
+                        <option value="Hi" {% if dev_variant == 'Hi' %}selected{% endif %}>Hi</option>
+                        <option value="Lite" {% if dev_variant == 'Lite' %}selected{% endif %}>Lite</option>
+                    </select>
+                </div>
+            </div>
+            <div id="codenameMatch" style="display:none; margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); font-size: 12px; color: var(--accent-green);">
+            </div>
+            <div id="refDetails" style="display:none; margin-top: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px;">
+                    <div>
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Release Year</label>
+                        <div id="releaseYearDisplay" class="font-mono" style="font-size: 14px; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">—</div>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">FW Codebase</label>
+                        <div id="fwCodebaseDisplay" class="font-mono" style="font-size: 14px; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">—</div>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Wireless Chip Vendor</label>
+                        <div id="chipVendorDisplay" class="font-mono" style="font-size: 14px; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">—</div>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Chip Codename</label>
+                        <div id="chipCodenameDisplay" class="font-mono" style="font-size: 14px; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    var DEVICE_TYPE_OPTIONS = {
+        'Connectivity Device': ['Router', 'AP', 'Gateway'],
+        'Endpoint Device': ['Laptop', 'Phone', 'Tablet'],
+    };
+
+    function toggleCodename() {
+        var cat = document.getElementById('categorySelect').value;
+        var row = document.getElementById('codenameRow');
+        row.style.display = (cat === 'Printer') ? 'block' : 'none';
+    }
+    function toggleOtherCategory() {
+        var cat = document.getElementById('categorySelect').value;
+        var row = document.getElementById('otherCategoryRow');
+        row.style.display = (cat === 'Other') ? 'block' : 'none';
+    }
+    function toggleDeviceType() {
+        var cat = document.getElementById('categorySelect').value;
+        var row = document.getElementById('deviceTypeRow');
+        var meshRow = document.getElementById('meshRow');
+        var select = document.getElementById('deviceTypeSelect');
+        var options = DEVICE_TYPE_OPTIONS[cat];
+        if (options) {
+            row.style.display = 'block';
+            var currentVal = select.value;
+            select.innerHTML = '<option value="">Select type...</option>';
+            options.forEach(function(opt) {
+                var el = document.createElement('option');
+                el.value = opt;
+                el.textContent = opt;
+                if (opt === currentVal) el.selected = true;
+                select.appendChild(el);
+            });
+            meshRow.style.display = (cat === 'Connectivity Device') ? 'block' : 'none';
+        } else {
+            row.style.display = 'none';
+            meshRow.style.display = 'none';
+            select.value = '';
+            document.getElementById('meshCheckbox').checked = false;
+        }
+    }
+    toggleCodename();
+    toggleOtherCategory();
+    updateRequiredFields();
+
+    // Set initial device type value from server data
+    (function() {
+        var savedType = '{{ device.get("device_type", "") if device is mapping else (device.device_type if device and device.device_type is defined else "") }}';
+        if (savedType) {
+            document.getElementById('deviceTypeSelect').value = savedType;
+        }
+        toggleDeviceType();
+        // Re-set after options are populated
+        if (savedType) {
+            document.getElementById('deviceTypeSelect').value = savedType;
+        }
+    })();
+
+    function updateRequiredFields() {
+        var cat = document.getElementById('categorySelect').value;
+        var mfgInput = document.getElementById('manufacturerInput');
+        var modelInput = document.getElementById('modelInput');
+        var serialInput = document.getElementById('serialInput');
+        var mfgReq = document.getElementById('manufacturerReq');
+        var modelReq = document.getElementById('modelReq');
+        var serialReq = document.getElementById('serialReq');
+        var ownershipRow = document.getElementById('ownershipRow');
+        var isEdit = {{ 'true' if is_edit else 'false' }};
+
+        // Reset all
+        mfgInput.removeAttribute('required');
+        modelInput.removeAttribute('required');
+        serialInput.removeAttribute('required');
+        mfgReq.style.display = 'none';
+        modelReq.style.display = 'none';
+        serialReq.style.display = 'none';
+
+        // Ownership is only visible for Connectivity Devices (partner program)
+        if (ownershipRow) {
+            ownershipRow.style.display = (cat === 'Connectivity Device') ? 'block' : 'none';
+        }
+
+        if (cat === 'Printer') {
+            // Default manufacturer to HP
+            if (!mfgInput.value) mfgInput.value = 'HP';
+            serialInput.setAttribute('required', 'required');
+            serialReq.style.display = 'inline';
+        } else if (cat === 'Connectivity Device' || cat === 'Endpoint Device') {
+            mfgInput.setAttribute('required', 'required');
+            modelInput.setAttribute('required', 'required');
+            serialInput.setAttribute('required', 'required');
+            mfgReq.style.display = 'inline';
+            modelReq.style.display = 'inline';
+            serialReq.style.display = 'inline';
+        }
+    }
+
+    var _searchTimeout = null;
+    function searchCodename(query) {
+        clearTimeout(_searchTimeout);
+        var box = document.getElementById('codenameSuggestions');
+        _searchTimeout = setTimeout(function() {
+            fetch('{{ url_for("api_reference_search") }}?q=' + encodeURIComponent(query || ''))
+                .then(function(r) { return r.json(); })
+                .then(function(results) {
+                    if (results.length === 0) { box.style.display = 'none'; return; }
+                    var html = '';
+                    results.forEach(function(r) {
+                        var sub = [r.model_name, r.wifi_gen ? 'Wi-Fi ' + r.wifi_gen : '', r.year].filter(Boolean).join(' · ');
+                        html += '<div class="codename-suggestion" style="padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-color); transition:background 0.1s;" ' +
+                            'onmouseover="this.style.background=\'var(--bg-card-hover)\'" ' +
+                            'onmouseout="this.style.background=\'transparent\'" ' +
+                            'onclick=\'selectCodename(' + JSON.stringify(r) + ')\'>' +
+                            '<div style="font-weight:600; font-size:14px;">' + r.codename + '</div>' +
+                            (sub ? '<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">' + sub + '</div>' : '') +
+                            '</div>';
+                    });
+                    box.innerHTML = html;
+                    box.style.display = 'block';
+                });
+        }, 200);
+    }
+
+    function selectCodename(ref) {
+        document.getElementById('codenameInput').value = ref.codename;
+        document.getElementById('codenameSuggestions').style.display = 'none';
+
+        // Auto-fill manufacturer and model from product reference
+        if (ref.model_name) {
+            var mfgField = document.querySelector('input[name="manufacturer"]');
+            var modelField = document.querySelector('input[name="model_number"]');
+            if (mfgField && !mfgField.value) mfgField.value = 'HP';
+            if (modelField && !modelField.value) modelField.value = ref.model_name;
+        }
+
+        // Auto-fill connectivity from Wi-Fi Gen
+        if (ref.wifi_gen) {
+            var connField = document.querySelector('input[name="connectivity"]');
+            if (connField && !connField.value) {
+                var genMap = {'4': 'Wi-Fi 4 (802.11n)', '5': 'Wi-Fi 5 (802.11ac)', '6': 'Wi-Fi 6 (802.11ax)', '6E': 'Wi-Fi 6E (802.11ax)', '7': 'Wi-Fi 7 (802.11be)'};
+                connField.value = genMap[ref.wifi_gen] || ('Wi-Fi ' + ref.wifi_gen);
+            }
+        }
+
+        // Populate reference detail fields
+        document.getElementById('releaseYearDisplay').textContent = ref.year || '—';
+        document.getElementById('fwCodebaseDisplay').textContent = ref.fw_codebase || '—';
+        document.getElementById('chipVendorDisplay').textContent = ref.chip_manufacturer || '—';
+        document.getElementById('chipCodenameDisplay').textContent = ref.chip_codename || '—';
+        document.getElementById('refDetails').style.display = 'block';
+
+        // Show match info
+        var matchDiv = document.getElementById('codenameMatch');
+        var info = '<strong>' + ref.codename + '</strong>';
+        if (ref.year) info += ' (' + ref.year + ')';
+        if (ref.model_name) info += ' — ' + ref.model_name;
+        if (ref.chip_manufacturer) info += ' · ' + ref.chip_manufacturer + ' ' + ref.chip_codename;
+        matchDiv.innerHTML = 'Matched from product reference: ' + info;
+        matchDiv.style.display = 'block';
+    }
+
+    // Close suggestions on click outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#codenameRow')) {
+            document.getElementById('codenameSuggestions').style.display = 'none';
+        }
+    });
+    </script>
+
+    <!-- Hardware Details -->
+    <div class="card" style="margin-bottom: 16px; cursor: default;">
+        <div class="section-label">Hardware Details</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="position: relative;">
+                <label id="manufacturerLabel" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                    Manufacturer <span id="manufacturerReq" style="color: var(--accent-red);">*</span>
+                </label>
+                <input type="text" name="manufacturer" id="manufacturerInput" autocomplete="off" data-ac-field="manufacturer"
+                       value="{{ device.get('manufacturer', '') if device is mapping else device.manufacturer if device else '' }}" placeholder="e.g. Intel">
+            </div>
+            <div>
+                <label id="modelLabel" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                    Model Number <span id="modelReq" style="color: var(--accent-red); display: none;">*</span>
+                </label>
+                <input type="text" name="model_number" id="modelInput"
+                       value="{{ device.get('model_number', '') if device is mapping else device.model_number if device else '' }}" placeholder="e.g. AX211NGW">
+            </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                    HW Version
+                </label>
+                <input type="text" name="hw_version"
+                       value="{{ device.get('hw_version', '') if device is mapping else device.hw_version if device else '' }}" placeholder="Optional, e.g. Rev A">
+            </div>
+            <div>
+                <label id="serialLabel" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                    Serial Number <span id="serialReq" style="color: var(--accent-red); display: none;">*</span>
+                </label>
+                <input type="text" name="serial_number" id="serialInput" value="{{ device.get('serial_number', '') if device is mapping else device.serial_number if device else '' }}" placeholder="e.g. SN-AX211-001">
+            </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">
+                    Custom Barcode
+                </label>
+                <input type="text" name="barcode_value" value="{{ device.get('barcode_value', '') if device is mapping else device.barcode_value if device else '' }}" placeholder="Optional, e.g. CNX-R900">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Leave blank to auto-generate. Allowed: A-Z, 0-9, and hyphen (-).</div>
+            </div>
+            <div id="ownershipRow" style="display: none;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Ownership</label>
+                <select name="vendor_supplied">
+                    <option value="0" {% if not (device.get('vendor_supplied', 0) if device is mapping else device.vendor_supplied if device else 0)|int %}selected{% endif %}>HP Owned</option>
+                    <option value="1" {% if (device.get('vendor_supplied', 0) if device is mapping else device.vendor_supplied if device else 0)|int %}selected{% endif %}>Vendor Supplied</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Location & Status -->
+    <div class="card" style="margin-bottom: 16px; cursor: default;">
+        <div class="section-label">Location & Status</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="position: relative;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Location</label>
+                <input type="text" name="location" autocomplete="off" data-ac-field="location"
+                       value="{{ device.get('location', '') if device is mapping else device.location if device else '' }}" placeholder="e.g. Lab A Shelf 2">
+            </div>
+            {% if is_edit %}
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Status</label>
+                <select name="status">
+                    <option value="available" {% if (device.get('status', '') if device is mapping else device.status if device else '') == 'available' %}selected{% endif %}>Available</option>
+                    <option value="checked_out" {% if (device.get('status', '') if device is mapping else device.status if device else '') == 'checked_out' %}selected{% endif %}>Checked Out</option>
+                    <option value="lost" {% if (device.get('status', '') if device is mapping else device.status if device else '') == 'lost' %}selected{% endif %}>Lost</option>
+                    <option value="retired" {% if (device.get('status', '') if device is mapping else device.status if device else '') == 'retired' %}selected{% endif %}>Retired</option>
+                </select>
+            </div>
+            <div style="position: relative;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Assigned To</label>
+                <input type="text" name="assigned_to" autocomplete="off"
+                       value="{{ device.get('assigned_to', '') if device is mapping else device.assigned_to if device else '' }}" placeholder="Person name">
+            </div>
+            {% endif %}
+        </div>
+        <div style="margin-top: 16px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 6px;">Notes</label>
+            <textarea name="notes" placeholder="Any additional notes...">{{ device.get('notes', '') if device is mapping else device.notes if device else '' }}</textarea>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px;">
+        <a href="{% if is_edit %}{{ url_for('device_detail', device_id=device_id) }}{% else %}{{ url_for('device_list') }}{% endif %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+            {% if is_edit %}Save Changes{% else %}Add Device{% endif %}
+        </button>
+    </div>
+</form>
+
+<script>
+(function() {
+    var cache = {};
+
+    // Standard connectivity options with full display names
+    var CONNECTIVITY_STANDARDS = [
+        'Wi-Fi 4 (802.11n)',
+        'Wi-Fi 5 (802.11ac)',
+        'Wi-Fi 6 (802.11ax)',
+        'Wi-Fi 6E (802.11ax)',
+        'Wi-Fi 7 (802.11be)',
+        'Bluetooth 4.0',
+        'Bluetooth 4.2',
+        'Bluetooth 5.0',
+        'Bluetooth 5.1',
+        'Bluetooth 5.2',
+        'Bluetooth 5.3',
+        'Bluetooth 5.4',
+        'BLE (Bluetooth Low Energy)',
+        'USB',
+        'Ethernet',
+        'Zigbee',
+        'Thread',
+        'Matter',
+        'NFC',
+    ];
+
+    // Normalize short-hand connectivity values to full display form
+    var CONNECTIVITY_MAP = {
+        'wi-fi 4': 'Wi-Fi 4 (802.11n)',
+        'wifi 4': 'Wi-Fi 4 (802.11n)',
+        'wi-fi 5': 'Wi-Fi 5 (802.11ac)',
+        'wifi 5': 'Wi-Fi 5 (802.11ac)',
+        'wi-fi 6': 'Wi-Fi 6 (802.11ax)',
+        'wifi 6': 'Wi-Fi 6 (802.11ax)',
+        'wi-fi 6e': 'Wi-Fi 6E (802.11ax)',
+        'wifi 6e': 'Wi-Fi 6E (802.11ax)',
+        'wi-fi 7': 'Wi-Fi 7 (802.11be)',
+        'wifi 7': 'Wi-Fi 7 (802.11be)',
+        'bt 4.0': 'Bluetooth 4.0',
+        'bt 4.2': 'Bluetooth 4.2',
+        'bt 5.0': 'Bluetooth 5.0',
+        'bt 5.1': 'Bluetooth 5.1',
+        'bt 5.2': 'Bluetooth 5.2',
+        'bt 5.3': 'Bluetooth 5.3',
+        'bt 5.4': 'Bluetooth 5.4',
+        'ble': 'BLE (Bluetooth Low Energy)',
+    };
+
+    function normalizeConnectivity(val) {
+        return CONNECTIVITY_MAP[val.toLowerCase().trim()] || null;
+    }
+
+    function fetchValues(field, cb) {
+        if (cache[field]) { cb(cache[field]); return; }
+        fetch('{{ url_for("api_distinct_values", field="__FIELD__") }}'.replace('__FIELD__', field))
+            .then(function(r) { return r.json(); })
+            .then(function(vals) {
+                if (field === 'connectivity') {
+                    // Merge standard options with DB values, deduped
+                    var set = {};
+                    CONNECTIVITY_STANDARDS.forEach(function(v) { set[v] = true; });
+                    vals.forEach(function(v) { set[v] = true; });
+                    vals = Object.keys(set).sort();
+                }
+                cache[field] = vals;
+                cb(vals);
+            });
+    }
+
+    function createDropdown(input) {
+        var dd = document.createElement('div');
+        dd.className = 'ac-dropdown';
+        dd.style.cssText = 'display:none; position:absolute; top:100%; left:0; right:0; z-index:100; ' +
+            'background:var(--bg-card); border:1px solid var(--border-color); border-radius:0 0 8px 8px; ' +
+            'max-height:200px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+        input.parentNode.appendChild(dd);
+        return dd;
+    }
+
+    function renderItems(dd, input, items) {
+        dd.innerHTML = '';
+        if (!items.length) { dd.style.display = 'none'; return; }
+        items.forEach(function(val) {
+            var item = document.createElement('div');
+            item.textContent = val;
+            item.style.cssText = 'padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border-color);';
+            item.addEventListener('mouseenter', function() { item.style.background = 'var(--bg-hover)'; });
+            item.addEventListener('mouseleave', function() { item.style.background = 'none'; });
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                input.value = val;
+                dd.style.display = 'none';
+            });
+            dd.appendChild(item);
+        });
+        dd.style.display = 'block';
+    }
+
+    document.querySelectorAll('[data-ac-field]').forEach(function(input) {
+        var field = input.getAttribute('data-ac-field');
+        var dd = createDropdown(input);
+
+        input.addEventListener('focus', function() {
+            fetchValues(field, function(vals) {
+                var q = input.value.toLowerCase();
+                var filtered = vals.filter(function(v) { return v.toLowerCase().indexOf(q) >= 0; });
+                renderItems(dd, input, filtered);
+            });
+        });
+
+        input.addEventListener('input', function() {
+            fetchValues(field, function(vals) {
+                var q = input.value.toLowerCase();
+                var filtered = vals.filter(function(v) { return v.toLowerCase().indexOf(q) >= 0; });
+                renderItems(dd, input, filtered);
+            });
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() {
+                dd.style.display = 'none';
+                // Auto-expand short connectivity values on blur
+                if (field === 'connectivity' && input.value) {
+                    var expanded = normalizeConnectivity(input.value);
+                    if (expanded) input.value = expanded;
+                }
+            }, 150);
+        });
+    });
+})();
+</script>
+{% endblock %}
