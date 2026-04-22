@@ -394,13 +394,16 @@ def init_db():
             )
 
         # Migrate old barcodes to the safe alphabet with 6-character suffix.
-        # Any barcode with wrong length, ambiguous chars, or old 4-digit format gets regenerated.
+        # Preserve current sequential router format (CNX-R###...) so barcodes remain stable
+        # across restarts when using the new counter-based scheme.
         _safe_chars = set(_BARCODE_CHARS)
         old_barcodes = conn.execute(
             "SELECT device_id, barcode_value FROM devices WHERE barcode_value LIKE 'CNX-%' ORDER BY rowid"
         ).fetchall()
         for idx, row in enumerate(old_barcodes, 1):
             suffix = row['barcode_value'][len(_BARCODE_PREFIX):]
+            if re.fullmatch(r'R\d{3,}', suffix or ''):
+                continue
             if not suffix or len(suffix) != 6 or not all(ch in _safe_chars for ch in suffix):
                 new_code = _int_to_barcode(_scramble_seq(idx))
                 new_barcode = f'{_BARCODE_PREFIX}{new_code.rjust(6, _BARCODE_CHARS[0])}'

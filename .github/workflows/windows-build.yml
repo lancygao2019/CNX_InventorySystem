@@ -1,6 +1,9 @@
 name: Build Windows Executable (Manual)
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       python_version:

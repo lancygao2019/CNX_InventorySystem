@@ -141,6 +141,15 @@ class TestBarcodeGeneration(BaseTestCase):
         self.assertNotEqual(device['barcode_value'], 'CNX-0001',
                             'Migrated barcode should be scrambled, not just padded')
 
+    def test_router_style_cnx_r_barcode_not_migrated(self):
+        """Current CNX-R### barcodes should survive init_db() unchanged."""
+        device_id = db.add_device({'name': 'Router Migration Guard', 'category': 'Connectivity Device'})
+        with db.db_transaction() as conn:
+            conn.execute("UPDATE devices SET barcode_value = 'CNX-R001' WHERE device_id = ?", (device_id,))
+        db.init_db()
+        device = db.get_device(device_id)
+        self.assertEqual(device['barcode_value'], 'CNX-R001')
+
 class TestLabelGeneration(BaseTestCase):
     """Test label PNG and barcode rendering."""
 

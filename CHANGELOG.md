@@ -18,6 +18,17 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Removed
 - 
 
+## [1.1.57] - 2026-04-21
+
+### Added
+- Regression test to ensure `CNX-R###` barcodes remain unchanged after `init_db()` runs.
+
+### Changed
+- Updated startup migration behavior to preserve current router barcode format (`CNX-R###`).
+
+### Fixed
+- Fixed an issue where restarting the app could rewrite sequential router barcodes into scrambled `CNX-XXXXXX` values.
+
 ## [1.1.56] - 2026-04-20
 
 ### Added
