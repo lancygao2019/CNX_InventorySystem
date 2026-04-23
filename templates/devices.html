@@ -50,13 +50,15 @@
                 </form>
             </div>
         </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; flex:0 1 320px; min-width:min(320px, 100%); max-width:360px;">
         <form id="bulkDeleteForm" method="POST" action="{{ url_for('device_bulk_delete') }}" style="display:inline-flex; margin:0; align-items:center;" onsubmit="return window.confirmBulkDelete()">
             <input type="hidden" name="device_ids" id="bulkDeleteIds">
-            <button type="submit" id="bulkDeleteBtn" class="btn btn-danger btn-sm" disabled title="Select devices using the checkboxes in the table">
+            <button type="submit" id="bulkDeleteBtn" class="btn btn-danger btn-sm" disabled title="Select retired devices using the checkboxes; non-retired rows are skipped">
                 Delete Selected (0)
             </button>
         </form>
-        <span style="font-size:11px; color:var(--text-muted); max-width:240px; line-height:1.35;">Bulk delete permanently removes selected devices from the database (any status).</span>
+        <span style="font-size:11px; color:var(--text-muted); line-height:1.4;">Bulk delete permanently removes selected devices from the database (retired only).</span>
+        </div>
         <a href="{{ url_for('device_add') }}" class="btn btn-primary">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
             Add Device
@@ -266,7 +268,8 @@
             alert('No devices selected.');
             return false;
         }
-        var msg = 'Delete ' + ids.length + ' selected device(s)? This cannot be undone.';
+        var msg = 'Please confirm with the Manager before deleting. Thank you!\n\n' +
+            'Permanently delete retired device(s) in this selection? Non-retired devices will be skipped. This cannot be undone.';
         return window.confirm(msg);
     };
 

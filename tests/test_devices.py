@@ -179,17 +179,19 @@ class TestDeviceBulkDelete(BaseTestCase):
         d1 = db.add_device({'name': 'Delete Me 1', 'category': 'Connectivity Device'})
         d2 = db.add_device({'name': 'Delete Me 2', 'category': 'Connectivity Device'})
         keep = db.add_device({'name': 'Keep Me', 'category': 'Connectivity Device'})
+        db.retire_device(d1)
+        db.retire_device(d2)
 
         resp = self.client.post('/devices/bulk-delete', data={
             'device_ids': [d1, d2],
         }, follow_redirects=True)
 
-        self.assertIn(b'Deleted 2 device(s).', resp.data)
+        self.assertIn(b'Deleted 2 retired device(s).', resp.data)
         self.assertIsNone(db.get_device(d1))
         self.assertIsNone(db.get_device(d2))
         self.assertIsNotNone(db.get_device(keep))
 
-    def test_bulk_delete_removes_retired_and_active(self):
+    def test_bulk_delete_removes_retired_only_skips_active(self):
         self.login_admin()
         retired_id = db.add_device({'name': 'Old Device', 'category': 'Connectivity Device'})
         active_id = db.add_device({'name': 'Active Device', 'category': 'Connectivity Device'})
@@ -199,9 +201,10 @@ class TestDeviceBulkDelete(BaseTestCase):
             'device_ids': [retired_id, active_id],
         }, follow_redirects=True)
 
-        self.assertIn(b'Deleted 2 device(s).', resp.data)
+        self.assertIn(b'Deleted 1 retired device(s).', resp.data)
+        self.assertIn(b'1 selected device(s) were skipped', resp.data)
         self.assertIsNone(db.get_device(retired_id))
-        self.assertIsNone(db.get_device(active_id))
+        self.assertIsNotNone(db.get_device(active_id))
 
     def test_bulk_delete_requires_devices_permission(self):
         db.create_user('viewer-bulk', 'pass1234', role='custom', permissions=[])
@@ -216,6 +219,7 @@ class TestDeviceBulkDelete(BaseTestCase):
     def test_bulk_delete_removes_device_upload_files(self):
         self.login_admin()
         did = db.add_device({'name': 'Has Attachment', 'category': 'Connectivity Device'})
+        db.retire_device(did)
         upload_dir = os.path.join(DEVICE_UPLOADS_DIR, did)
         os.makedirs(upload_dir, exist_ok=True)
         filename = 'sample.txt'

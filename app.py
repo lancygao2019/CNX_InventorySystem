@@ -798,7 +798,7 @@ def device_retire(device_id):
 @app.route('/devices/bulk-delete', methods=['POST'])
 @permission_required('devices')
 def device_bulk_delete():
-    """Delete multiple devices selected from the inventory list."""
+    """Delete multiple retired devices selected from the inventory list."""
     raw_ids = []
     for item in request.form.getlist('device_ids'):
         raw_ids.extend(item.replace(',', '\n').splitlines())
@@ -816,10 +816,14 @@ def device_bulk_delete():
 
     deleted = 0
     not_found = 0
+    skipped_non_retired = 0
     for device_id in device_ids:
         device = db.get_device(device_id)
         if not device:
             not_found += 1
+            continue
+        if (device.get('status') or '').strip() != 'retired':
+            skipped_non_retired += 1
             continue
 
         for att in db.get_device_attachments(device_id):
@@ -861,7 +865,13 @@ def device_bulk_delete():
             not_found += 1
 
     if deleted:
-        flash(f'Deleted {deleted} device(s).', 'success')
+        flash(f'Deleted {deleted} retired device(s).', 'success')
+    if skipped_non_retired:
+        flash(
+            f'{skipped_non_retired} selected device(s) were skipped '
+            f'(bulk delete only removes retired devices).',
+            'warning',
+        )
     if not_found:
         flash(f'{not_found} selected device(s) were not found.', 'warning')
     return redirect(request.referrer or url_for('device_list'))
